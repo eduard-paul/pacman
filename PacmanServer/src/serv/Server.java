@@ -1,5 +1,6 @@
 package serv;
 
+import java.awt.Color;
 import java.awt.Point;
 import java.io.DataInputStream;
 import java.io.DataOutputStream;
@@ -7,6 +8,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.ObjectOutputStream;
 import java.io.OutputStream;
+import java.io.Serializable;
 import java.net.ServerSocket;
 import java.net.Socket;
 import java.util.Timer;
@@ -134,10 +136,11 @@ public class Server {
 		 */
 		User(Socket socketParam) throws IOException {
 			s = socketParam;
-			ds = new Socket(s.getInetAddress(), s.getPort() + 1);
+			ds = new Socket(s.getInetAddress(), 6667);
 			this.sin = s.getInputStream();
 			this.sout = s.getOutputStream();
 			dObjOut = new ObjectOutputStream(ds.getOutputStream());
+			dOut = new DataOutputStream(ds.getOutputStream());
 		}
 
 		public void run() {
@@ -283,10 +286,6 @@ public class Server {
 			}
 		}
 
-		/**
-		 * метод аккуратно закрывает сокет и убирает его со списка активных
-		 * сокетов
-		 */
 		public synchronized void close() {
 			if (!this.myRoomName.isEmpty()) {
 				for (Room room : rooms) {
@@ -295,28 +294,29 @@ public class Server {
 					}
 				}
 			}
-			q.remove(this); // убираем из списка
+			q.remove(this);
 			if (!s.isClosed()) {
 				try {
-					s.close(); // закрываем
+					s.close();
 					System.out.println(s.toString() + " disconnected");
+				} catch (IOException ignored) {
+				}
+			}
+			if (!ds.isClosed()) {
+				try {
+					ds.close();
 				} catch (IOException ignored) {
 				}
 			}
 		}
 
-		/**
-		 * финализатор просто на всякий случай.
-		 * 
-		 * @throws Throwable
-		 */
 		@Override
 		protected void finalize() throws Throwable {
 			super.finalize();
 			close();
 		}
 
-		public void SendState(Vector<Game.CharacterState> state) {
+		public void SendState(Vector<CharacterState> state) {
 			try {
 				dObjOut.writeObject(state);
 				dObjOut.flush();
@@ -334,8 +334,6 @@ public class Server {
 			}
 		}
 	}
-
-	// /////////////////////
 
 	private class Room {
 		String name;
@@ -361,6 +359,8 @@ public class Server {
 
 			game = new Game(maxPlayers);
 
+			if (currPlayers == maxPlayers)
+				StartGame();
 		}
 
 		public void AddPlayer(User firstPlayer) {
@@ -380,10 +380,7 @@ public class Server {
 			}
 			SendBoard();
 			timer.schedule(task, 0, 50);
-			try {
-				wait(2000);
-			} catch (InterruptedException e1) {
-			}
+
 			game.start();
 			try {
 				game.join();
@@ -393,7 +390,7 @@ public class Server {
 		}
 
 		private void SendState() {
-			Vector<Game.CharacterState> cs = game.getGameState();
+			Vector<CharacterState> cs = game.getGameState();
 			for (User user : users) {
 				user.SendState(cs);
 			}
@@ -566,14 +563,7 @@ public class Server {
 				cs.add(character.getCharState());
 			}
 			return cs;
-		}
-
-		protected class CharacterState {
-			int id;
-			Point cell;
-			double dist;
-			int direction, speed;
-		}
+		}		
 
 		abstract class Character {
 			private int id;
@@ -674,4 +664,12 @@ public class Server {
 
 	}
 
+}
+
+class CharacterState implements Serializable {
+	private static final long serialVersionUID = 7237905012931057864L;
+	int id;
+	Point cell;
+	double dist;
+	int direction, speed;
 }

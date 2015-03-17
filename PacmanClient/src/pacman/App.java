@@ -7,22 +7,10 @@ import java.awt.EventQueue;
 import java.awt.FlowLayout;
 import java.awt.Graphics;
 import java.awt.Graphics2D;
-import java.awt.List;
 import java.awt.Point;
-import java.awt.event.MouseEvent;
 import java.awt.image.BufferedImage;
 
 import javax.swing.*;
-import javax.swing.event.ListSelectionEvent;
-import javax.swing.event.ListSelectionListener;
-import javax.swing.event.MouseInputAdapter;
-import javax.swing.AbstractListModel;
-import javax.swing.JButton;
-import javax.swing.JList;
-import javax.swing.JMenuBar;
-import javax.swing.JMenu;
-import javax.swing.JMenuItem;
-import javax.swing.JPanel;
 
 import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
@@ -33,11 +21,13 @@ import java.io.DataOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.ObjectInputStream;
-import java.io.ObjectOutputStream;
 import java.io.OutputStream;
+import java.io.Serializable;
 import java.net.InetAddress;
 import java.net.ServerSocket;
 import java.net.Socket;
+import java.util.Timer;
+import java.util.TimerTask;
 import java.util.Vector;
 
 public class App {
@@ -51,123 +41,92 @@ public class App {
 	DataInputStream din;
 	String[] roomList;
 	String myRoom = "";
-	Vector<CharacterState> gs;
+	Vector<CharacterState> gameState;
 	int[][] board;
 	SocketProcessor processor;
 	Thread thread;
+	Timer painter;
 
 	private JFrame gameWindow;
 	private JFrame mainWindow;
 	protected JMenuItem mntmDisconnect;
 	protected JMenuItem mntmConnectTo;
+	@SuppressWarnings("rawtypes")
 	protected JList list;
 	private JButton btnNewRoom;
 	private JButton btnEnter;
 	private JButton btnLeaveRoom;
 	private JButton btnRefresh;
+	private DrawingArea drawingArea;
 
 	class DrawingArea extends JPanel {
-		BufferedImage image;
-		Graphics2D g2d;
+
+		private static final long serialVersionUID = -2004830881976534775L;
+		BufferedImage image, imgBoard;
+		Graphics2D g2dBoard, g2dImage;
 		Point startPoint = null;
 		Point endPoint = null;
 
 		public DrawingArea() {
 			setBackground(Color.WHITE);
-
-			MyMouseListener ml = new MyMouseListener();
-			addMouseListener(ml);
-			addMouseMotionListener(ml);
 		}
 
 		public void paintComponent(Graphics g) {
 			super.paintComponent(g);
 
-			// Custom code to support painting from the BufferedImage
-
-			if (image == null) {
-				createEmptyImage();
-			}
-
-			g.drawImage(image, 0, 0, null);
-
-			// Paint the Rectangle as the mouse is being dragged
-
-			if (startPoint != null && endPoint != null) {
-				int x = Math.min(startPoint.x, endPoint.x);
-				int y = Math.min(startPoint.y, endPoint.y);
-				int width = Math.abs(startPoint.x - endPoint.x);
-				int height = Math.abs(startPoint.y - endPoint.y);
-				g.drawRect(x, y, width, height);
+			if (image != null) {
+				g.drawImage(image, 0, 0, null);
 			}
 		}
 
-		private void createEmptyImage() {
-			image = new BufferedImage(getWidth(), getHeight(),
-					BufferedImage.TYPE_INT_ARGB);
-			g2d = (Graphics2D) image.getGraphics();
-			g2d.setColor(Color.BLACK);
-			g2d.drawString(
-					"Add a rectangle by doing mouse press, drag and release!!!",
-					40, 15);
-		}
+		public void PaintState() {
+			imgBoard.copyData(image.getRaster());
 
-		public void addRectangle(int x, int y, int width, int height,
-				Color color) {
-			g2d.setColor(color);
-			g2d.drawRect(x, y, width, height);
-			repaint();
-		}
-
-		public void clear() {
-			createEmptyImage();
-			repaint();
-		}
-
-		class MyMouseListener extends MouseInputAdapter {
-			private int xMin;
-			private int xMax;
-			private int yMin;
-			private int yMax;
-
-			public void mousePressed(MouseEvent e) {
-				startPoint = e.getPoint();
-				endPoint = startPoint;
-				xMin = startPoint.x;
-				xMax = startPoint.x;
-				yMin = startPoint.y;
-				yMax = startPoint.y;
-			}
-
-			public void mouseDragged(MouseEvent e) {
-				// Repaint only the area affected by the mouse dragging
-
-				endPoint = e.getPoint();
-				xMin = Math.min(xMin, endPoint.x);
-				xMax = Math.max(xMax, endPoint.x);
-				yMin = Math.min(yMin, endPoint.y);
-				yMax = Math.max(yMax, endPoint.y);
-				repaint(xMin, yMin, xMax - xMin + 1, yMax - yMin + 1);
-			}
-
-			public void mouseReleased(MouseEvent e) {
-				// Custom code to paint the Rectangle on the BufferedImage
-
-				int x = Math.min(startPoint.x, endPoint.x);
-				int y = Math.min(startPoint.y, endPoint.y);
-				int width = Math.abs(startPoint.x - endPoint.x);
-				int height = Math.abs(startPoint.y - endPoint.y);
-
-				if (width != 0 || height != 0) {
-					// g2d.setColor( e.getComponent().getForeground() );
-					// g2d.drawRect(x, y, width, height);
-					addRectangle(x, y, width, height, e.getComponent()
-							.getForeground());
+			if (gameState != null)
+				for (CharacterState ch : gameState) {
+					switch (ch.id) {
+					case 1:
+						g2dImage.setColor(Color.RED);
+						break;
+					case 2:
+						g2dImage.setColor(Color.GREEN);
+						break;
+					case 3:
+						g2dImage.setColor(Color.BLUE);
+						break;
+					case 4:
+						g2dImage.setColor(Color.ORANGE);
+						break;
+					default:
+						g2dImage.setColor(Color.DARK_GRAY);
+						break;
+					}
+					g2dImage.fillOval(ch.cell.y * 8, ch.cell.x * 8,
+							(ch.cell.y + 1) * 8, (ch.cell.x + 1) * 8);
 				}
+			repaint();
+		}
 
-				startPoint = null;
-				// repaint();
+		public void PaintBoard() {
+			image = new BufferedImage(board[0].length * 8, board.length * 8,
+					BufferedImage.TYPE_INT_ARGB);
+			imgBoard = new BufferedImage(board[0].length * 8, board.length * 8,
+					BufferedImage.TYPE_INT_ARGB);
+			g2dBoard = (Graphics2D) imgBoard.getGraphics();
+			g2dImage = (Graphics2D) image.getGraphics();
+			for (int row = 0; row < board.length; row++) {
+				for (int col = 0; col < board[0].length; col++) {
+					if (board[row][col] == -1) {
+						g2dBoard.setColor(Color.lightGray);
+					} else {
+						g2dBoard.setColor(Color.white);
+					}
+					g2dBoard.fillRect(col * 8, row * 8, (col + 1) * 8,
+							(row + 1) * 8);
+				}
 			}
+			imgBoard.copyData(image.getRaster());
+			repaint();
 		}
 	}
 
@@ -203,7 +162,15 @@ public class App {
 
 		GameWindowInit();
 
+		painter = new java.util.Timer();
+
 	}
+
+	TimerTask paint = new TimerTask() {
+		public void run() {
+			drawingArea.PaintState();
+		}
+	};
 
 	private void GameWindowInit() {
 		gameWindow = new JFrame();
@@ -211,7 +178,7 @@ public class App {
 		gameWindow.setDefaultCloseOperation(JFrame.DO_NOTHING_ON_CLOSE);
 		gameWindow.getContentPane().setLayout(new BorderLayout(0, 0));
 
-		DrawingArea drawingArea = new DrawingArea();
+		drawingArea = new DrawingArea();
 		gameWindow.getContentPane().add(drawingArea, BorderLayout.CENTER);
 
 		JMenuBar menuBar = new JMenuBar();
@@ -231,7 +198,7 @@ public class App {
 			public void windowClosing(WindowEvent ev) {
 				gameWindow.setVisible(false);
 				mainWindow.setVisible(true);
-				ExitGame();
+				LeaveRoom();
 			}
 		});
 	}
@@ -250,10 +217,6 @@ public class App {
 		} catch (IOException e) {
 		}
 		return result;
-	}
-
-	private void ExitGame() {
-		send("ExitGame");
 	}
 
 	@SuppressWarnings({ "rawtypes", "unchecked" })
@@ -423,7 +386,7 @@ public class App {
 									.getByName(address);
 							socket = new Socket(ipAddress, serverPort);
 
-							ss = new ServerSocket(socket.getLocalPort() + 1);
+							ss = new ServerSocket(6667);
 							dataSocket = ss.accept();
 
 							InputStream sin = socket.getInputStream();
@@ -453,6 +416,21 @@ public class App {
 
 						} catch (Exception e) {
 							failed = true;
+							try {
+								if (!socket.isClosed())
+									socket.close();
+							} catch (Exception e0) {
+							}
+							try {
+								if (!dataSocket.isClosed())
+									dataSocket.close();
+							} catch (Exception e0) {
+							}
+							try {
+								if (!ss.isClosed())
+									ss.close();
+							} catch (Exception e0) {
+							}
 						}
 				} while (failed);
 			}
@@ -472,6 +450,10 @@ public class App {
 				try {
 					if (!socket.isClosed())
 						socket.close();
+					if (!dataSocket.isClosed())
+						dataSocket.close();
+					if (!ss.isClosed())
+						ss.close();
 					mntmDisconnect.setEnabled(false);
 					mntmConnectTo.setEnabled(true);
 					myRoom = "";
@@ -486,13 +468,6 @@ public class App {
 		mntmDisconnect.setEnabled(false);
 		mnFile.add(mntmDisconnect);
 		mnFile.add(mntmExit);
-	}
-
-	protected class CharacterState {
-		int id;
-		Point cell;
-		double dist;
-		int direction, speed;
 	}
 
 	private class SocketProcessor implements Runnable {
@@ -511,15 +486,32 @@ public class App {
 
 					board = (int[][]) doin.readObject();
 
+					drawingArea.PaintBoard();
+					StartGame();
+
 					while (true)
-						gs = (Vector<CharacterState>) doin.readObject();
+						gameState = (Vector<CharacterState>) doin.readObject();
 
 				} catch (Exception e) {
-					gs = null;
+					gameState = null;
 				}
 
 			}
 
 		}
 	}
+
+	public void StartGame() {
+		mainWindow.setVisible(false);
+		gameWindow.setVisible(true);
+		painter.schedule(paint, 0, 50);
+	}
+}
+
+class CharacterState implements Serializable {
+	private static final long serialVersionUID = 7237905012931057864L;
+	int id;
+	Point cell;
+	double dist;
+	int direction, speed;
 }
