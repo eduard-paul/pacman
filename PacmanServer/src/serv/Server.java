@@ -137,7 +137,6 @@ public class Server {
 			dOut = new DataOutputStream(ds.getOutputStream());
 			din = new DataInputStream(ds.getInputStream());
 			Thread secondReader = new Thread(new Runnable() {
-
 				@Override
 				public void run() {
 
@@ -155,19 +154,13 @@ public class Server {
 
 						if (line == null) {
 							close(); 
-						} else if ("Up".equals(line)) {
-
-						} else if ("Down".equals(line)) {
-							SendRoomList();
-
-						} else if ("Up".equals(line)) {
-
-						} else if ("Down".equals(line)) {
-							SendRoomList();
+						} else {
+							myRoom.Command(line, playerId);
 						}
 					}
 				}
 			});
+			secondReader.start();
 		}
 
 		public void run() {
@@ -190,15 +183,29 @@ public class Server {
 				if (line == null) { // если клиент отключился в штатном
 									// режиме.
 					close(); // то закрываем сокет
-				} else if ("Up".equals(line)) {
-
-				} else if ("Down".equals(line)) {
+				} else if ("shutdown".equals(line)) { // если поступила команда
+														// "погасить сервер",
+														// то...
+					serverThread.interrupt(); // сначала возводим флаг у
+												// северной нити о необходимости
+												// прерваться.
+					try {
+						new Socket("localhost", port); // создаем фейк-коннект
+														// (чтобы выйти из
+														// .accept())
+					} catch (IOException ignored) { // ошибки неинтересны
+					} finally {
+						shutdownServer(); // а затем глушим сервер вызовом его
+											// метода shutdownServer().
+					}
+				} else if ("RefreshRoomList".equals(line)) {
 					SendRoomList();
-
-				} else if ("Up".equals(line)) {
-
-				} else if ("Down".equals(line)) {
-					SendRoomList();
+				} else if (line.contains("CreateRoom:")) {
+					CreateRoom(line);
+				} else if (line.contains("EnterRoom:")) {
+					EnterRoom(line);
+				} else if (line.contains("LeaveRoom")) {
+					LeaveRoom();
 				}
 			}
 		}
@@ -349,20 +356,32 @@ public class Server {
 	}
 
 	private class Room {
-		String name;
-		int maxPlayers;
-		int currPlayers;
-		Game game;
-		BlockingQueue<User> users = new LinkedBlockingQueue<User>();
-		Timer timer = new java.util.Timer();
+		private String name;
+		private int maxPlayers;
+		private int currPlayers;
+		private Game game;
+		private BlockingQueue<User> users = new LinkedBlockingQueue<User>();
+		private Timer timer = new java.util.Timer();
 
-		TimerTask task = new TimerTask() {
+		private TimerTask task = new TimerTask() {
 			public void run() {
 				SendState();
 
 			}
 		};
 
+		public void Command(String line, int id) {
+			if ("Up".equals(line)) {
+				game.GoUp(id);
+			} else if ("Down".equals(line)) {
+				game.GoDown(id);
+			} else if ("Left".equals(line)) {
+				game.GoLeft(id);
+			} else if ("Right".equals(line)) {
+				game.GoRight(id);
+			}
+		}
+		
 		public Room(String name, int maxPlayers, User firstPlayer) {
 
 			this.name = name;
@@ -385,8 +404,8 @@ public class Server {
 			}
 		}
 
-		public void StartGame() {
-			int i = 0;
+		private void StartGame() {
+			int i = 1;
 			for (User user : users) {
 				user.playerId = i++;
 				user.SendStart();
@@ -509,6 +528,35 @@ public class Server {
 			}
 		};
 
+		public void GoUp(int id){
+			for (Character ch : characters) {
+				if (ch.id == id) {
+					ch.setDesiredDirection(-2);
+				}
+			}
+		}
+		public void GoDown(int id){
+			for (Character ch : characters) {
+				if (ch.id == id) {
+					ch.setDesiredDirection(2);
+				}
+			}
+		}
+		public void GoLeft(int id){
+			for (Character ch : characters) {
+				if (ch.id == id) {
+					ch.setDesiredDirection(-1);
+				}
+			}
+		}
+		public void GoRight(int id){
+			for (Character ch : characters) {
+				if (ch.id == id) {
+					ch.setDesiredDirection(1);
+				}
+			}
+		}
+		
 		public Game(int playersNum) {
 
 			this.playersNum = playersNum;
@@ -522,7 +570,7 @@ public class Server {
 
 			for (int i = 0; i < playersNum; i++) {
 				int direction = 1; // "1" - rigth, "-1" - left,
-									// "2" - up, "-2" - down
+									// "2" - down, "-2" - up
 				if (i % 2 == 1)
 					direction = -1;
 				characters.add(new Player(defaultPlayersStartPoints[i],
@@ -582,7 +630,7 @@ public class Server {
 			private int id;
 			private Point cell;
 			private double dist = 0;
-			private int direction, speed;
+			private int direction, speed, desiredDirection;
 
 			public CharacterState getCharState() {
 				CharacterState s = new CharacterState();
@@ -603,24 +651,62 @@ public class Server {
 			public Character(Point cell, int direction, int speed, int id) {
 				this.cell = (Point) cell.clone();
 				this.direction = direction;
+				this.desiredDirection = direction;
 				this.speed = speed;
 				this.id = id;
 			}
 
+			public void setDesiredDirection(int dd) {
+				desiredDirection = dd;
+			}
+			
 			public void move() {
-				if (board.getCellState(NextCell(cell)) >= 0) {
+				if (Math.abs(desiredDirection) == Math.abs(direction))
+					direction = desiredDirection;
+				if (board.getCellState(NextCell()) != -1
+						|| (Math.abs(dist)>1.1*TimerPeriod / speed)) {
 					dist += 2 * Math.signum(direction) * TimerPeriod / speed;
 					if (Math.abs(dist) >= 1) {
 						board.setCellState(cell, 0);
-						board.setCellState(NextCell(cell), 1);
-						cell = NextCell(cell);
+						board.setCellState(NextCell(), 1);
+						cell = NextCell();
 						dist -= 2 * Math.signum(dist);
 
 					}
 				}
+				if (board.getCellState(DesiredCell()) != -1
+						&& (Math.abs(dist)<1.1*TimerPeriod / speed)){
+//					if (Math.abs(direction) != Math.abs(desiredDirection))
+//						dist = -dist;
+					direction = desiredDirection;
+				}
 			}
 
-			private Point NextCell(Point cell) {
+			private Point DesiredCell() {
+				Point result = (Point) cell.clone();
+				
+				switch (desiredDirection) {
+				case 1:
+					result.y++;
+					break;
+				case -1:
+					result.y--;
+					break;
+				case 2:
+					result.x++;
+					break;
+				case -2:
+					result.x--;
+					break;
+
+				default:
+					break;
+				}
+				
+				return result;
+			}
+			
+			private Point NextCell() {
 				Point result = (Point) cell.clone();
 
 				switch (direction) {
