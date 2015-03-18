@@ -1,7 +1,6 @@
 package serv;
 
 import java.awt.Point;
-import java.awt.geom.Point2D;
 import java.io.DataInputStream;
 import java.io.DataOutputStream;
 import java.io.IOException;
@@ -769,26 +768,35 @@ public class Server {
 			@Override
 			public void move() {
 
+				Point aimCell = null;
+				
+				
+				
 				Point right = RightCell();
 				Point left = LeftCell();
 				Point next = NextCell();
 				
 				double minDistToAim = Double.MAX_VALUE;
 				
+				if (id == -1) aimCell = aim.cell;
+				if (id == -2) aimCell = new Point(aim.cell.x+4, aim.cell.y);
+				if (id == -3) aimCell = new Point(aim.cell.x-4, aim.cell.y);
+				if (id == -4) aimCell = new Point(aim.cell.x, aim.cell.y-4);
+				
 				if (board.getCellState(next) != -1 && 
-						next.distance(aim.cell) < minDistToAim){
+						next.distance(aimCell) < minDistToAim){
 					desiredDirection = direction;
-					minDistToAim = next.distance(aim.cell);
+					minDistToAim = next.distance(aimCell);
 				}
 				if (board.getCellState(right) != -1 && 
-						right.distance(aim.cell) < minDistToAim){
+						right.distance(aimCell) < minDistToAim){
 					TurnRight();
-					minDistToAim = right.distance(aim.cell);
+					minDistToAim = right.distance(aimCell);
 				}
 				if (board.getCellState(left) != -1 && 
-						left.distance(aim.cell) < minDistToAim){
+						left.distance(aimCell) < minDistToAim){
 					TurnLeft();
-					minDistToAim = left.distance(aim.cell);
+					minDistToAim = left.distance(aimCell);
 				}	
 				
 				super.move();
