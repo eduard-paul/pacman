@@ -12,6 +12,8 @@ import java.awt.image.BufferedImage;
 
 import javax.swing.*;
 
+import myLib.CharacterState;
+
 import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
 import java.awt.event.WindowAdapter;
@@ -62,6 +64,7 @@ public class App {
 	class DrawingArea extends JPanel {
 
 		private static final long serialVersionUID = -2004830881976534775L;
+		public static final int cellSize = 18;
 		BufferedImage image, imgBoard;
 		Graphics2D g2dBoard, g2dImage;
 		Point startPoint = null;
@@ -84,6 +87,7 @@ public class App {
 
 			if (gameState != null)
 				for (CharacterState ch : gameState) {
+					g2dImage.setColor(Color.DARK_GRAY);
 					switch (ch.id) {
 					case 1:
 						g2dImage.setColor(Color.RED);
@@ -98,19 +102,23 @@ public class App {
 						g2dImage.setColor(Color.ORANGE);
 						break;
 					default:
-						g2dImage.setColor(Color.DARK_GRAY);
 						break;
 					}
-					g2dImage.fillOval(ch.cell.y * 8, ch.cell.x * 8,
-							(ch.cell.y + 1) * 8, (ch.cell.x + 1) * 8);
+					int x = ch.cell.x * cellSize;
+					int y = ch.cell.y * cellSize;
+					if (Math.abs(ch.direction) > 1)
+						x += (ch.dist * cellSize / 2);
+					else
+						y += (ch.dist * cellSize / 2);
+					g2dImage.fillOval(y, x, cellSize, cellSize);
 				}
 			repaint();
 		}
 
 		public void PaintBoard() {
-			image = new BufferedImage(board[0].length * 8, board.length * 8,
+			image = new BufferedImage(board[0].length * cellSize, board.length * cellSize,
 					BufferedImage.TYPE_INT_ARGB);
-			imgBoard = new BufferedImage(board[0].length * 8, board.length * 8,
+			imgBoard = new BufferedImage(board[0].length * cellSize, board.length * cellSize,
 					BufferedImage.TYPE_INT_ARGB);
 			g2dBoard = (Graphics2D) imgBoard.getGraphics();
 			g2dImage = (Graphics2D) image.getGraphics();
@@ -121,8 +129,7 @@ public class App {
 					} else {
 						g2dBoard.setColor(Color.white);
 					}
-					g2dBoard.fillRect(col * 8, row * 8, (col + 1) * 8,
-							(row + 1) * 8);
+					g2dBoard.fillRect(col * cellSize, row * cellSize, cellSize, cellSize);
 				}
 			}
 			imgBoard.copyData(image.getRaster());
@@ -174,7 +181,8 @@ public class App {
 
 	private void GameWindowInit() {
 		gameWindow = new JFrame();
-		gameWindow.setBounds(100, 100, 460, 352);
+		gameWindow.setResizable(false);
+		gameWindow.setBounds(100, 100, DrawingArea.cellSize*28+6, DrawingArea.cellSize*31+50);
 		gameWindow.setDefaultCloseOperation(JFrame.DO_NOTHING_ON_CLOSE);
 		gameWindow.getContentPane().setLayout(new BorderLayout(0, 0));
 
@@ -386,7 +394,7 @@ public class App {
 									.getByName(address);
 							socket = new Socket(ipAddress, serverPort);
 
-							ss = new ServerSocket(6667);
+							ss = new ServerSocket(socket.getLocalPort() + 1);
 							dataSocket = ss.accept();
 
 							InputStream sin = socket.getInputStream();
@@ -506,12 +514,4 @@ public class App {
 		gameWindow.setVisible(true);
 		painter.schedule(paint, 0, 50);
 	}
-}
-
-class CharacterState implements Serializable {
-	private static final long serialVersionUID = 7237905012931057864L;
-	int id;
-	Point cell;
-	double dist;
-	int direction, speed;
 }

@@ -17,6 +17,8 @@ import java.util.Vector;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.LinkedBlockingQueue;
 
+import myLib.*;
+
 public class Server {
 
 	private ServerSocket ss; // сам сервер-сокет
@@ -136,7 +138,7 @@ public class Server {
 		 */
 		User(Socket socketParam) throws IOException {
 			s = socketParam;
-			ds = new Socket(s.getInetAddress(), 6667);
+			ds = new Socket(s.getInetAddress(), s.getPort() +1);
 			this.sin = s.getInputStream();
 			this.sout = s.getOutputStream();
 			dObjOut = new ObjectOutputStream(ds.getOutputStream());
@@ -591,6 +593,7 @@ public class Server {
 				this.cell = (Point) cell.clone();
 				this.direction = direction;
 				this.speed = speed;
+				this.id = id;
 			}
 
 			public void move() {
@@ -666,10 +669,4 @@ public class Server {
 
 }
 
-class CharacterState implements Serializable {
-	private static final long serialVersionUID = 7237905012931057864L;
-	int id;
-	Point cell;
-	double dist;
-	int direction, speed;
-}
+
