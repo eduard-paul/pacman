@@ -16,6 +16,8 @@ import myLib.CharacterState;
 
 import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
+import java.awt.event.KeyAdapter;
+import java.awt.event.KeyEvent;
 import java.awt.event.WindowAdapter;
 import java.awt.event.WindowEvent;
 import java.io.DataInputStream;
@@ -24,7 +26,6 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.ObjectInputStream;
 import java.io.OutputStream;
-import java.io.Serializable;
 import java.net.InetAddress;
 import java.net.ServerSocket;
 import java.net.Socket;
@@ -38,14 +39,14 @@ public class App {
 	Socket socket, dataSocket;
 	ServerSocket ss;
 	DataInputStream in;
-	DataOutputStream out;
+	DataOutputStream out, dout;
 	ObjectInputStream doin;
 	DataInputStream din;
 	String[] roomList;
 	String myRoom = "";
 	Vector<CharacterState> gameState;
 	int[][] board;
-	SocketProcessor processor;
+	SocketReader processor;
 	Thread thread;
 	Timer painter;
 
@@ -181,12 +182,24 @@ public class App {
 
 	private void GameWindowInit() {
 		gameWindow = new JFrame();
-		gameWindow.setResizable(false);
+		gameWindow.setResizable(false);		
 		gameWindow.setBounds(100, 100, DrawingArea.cellSize*28+6, DrawingArea.cellSize*31+50);
 		gameWindow.setDefaultCloseOperation(JFrame.DO_NOTHING_ON_CLOSE);
+		gameWindow.addKeyListener(new KeyAdapter() {
+		     
+		    public void keyPressed(KeyEvent e) {
+		         String key = KeyEvent.getKeyText(e.getKeyCode());
+		         try {
+					dout.writeUTF(key);
+				} catch (IOException e1) {
+				}
+		         System.out.println(key);
+		    }
+		             
+		});
 		gameWindow.getContentPane().setLayout(new BorderLayout(0, 0));
 
-		drawingArea = new DrawingArea();
+		drawingArea = new DrawingArea();		
 		gameWindow.getContentPane().add(drawingArea, BorderLayout.CENTER);
 
 		JMenuBar menuBar = new JMenuBar();
@@ -211,7 +224,7 @@ public class App {
 		});
 	}
 
-	private void send(String str) {
+	private void Send(String str) {
 		try {
 			out.writeUTF(str);
 		} catch (IOException e) {
@@ -252,7 +265,7 @@ public class App {
 
 	private void LeaveRoom() {
 		myRoom = "";
-		send("LeaveRoom");
+		Send("LeaveRoom");
 		RefreshRoomList();
 		btnEnter.setEnabled(true);
 		btnNewRoom.setEnabled(true);
@@ -331,7 +344,7 @@ public class App {
 						}
 				} while (failed);
 				if (roomName != null) {
-					send("CreateRoom:" + roomName);
+					Send("CreateRoom:" + roomName);
 					String answer = recv();
 					RefreshRoomList();
 					if (answer.equals("success")) {
@@ -350,7 +363,7 @@ public class App {
 				if (idx >= 0) {
 					String name = roomList[idx].substring(0,
 							roomList[idx].length() - 6);
-					send("EnterRoom:" + name);
+					Send("EnterRoom:" + name);
 					String answer = recv();
 					if (answer.equals("success")) {
 						GetRoom(name);
@@ -407,8 +420,10 @@ public class App {
 									.getInputStream());
 							din = new DataInputStream(dataSocket
 									.getInputStream());
+							dout = new DataOutputStream(dataSocket
+									.getOutputStream());
 
-							processor = new SocketProcessor();
+							processor = new SocketReader();
 							thread = new Thread(processor);
 							thread.setDaemon(true);
 							thread.start();
@@ -478,7 +493,7 @@ public class App {
 		mnFile.add(mntmExit);
 	}
 
-	private class SocketProcessor implements Runnable {
+	private class SocketReader implements Runnable {
 
 		@SuppressWarnings("unchecked")
 		public void run() {
@@ -508,6 +523,7 @@ public class App {
 
 		}
 	}
+
 
 	public void StartGame() {
 		mainWindow.setVisible(false);

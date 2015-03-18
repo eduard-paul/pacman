@@ -123,26 +123,51 @@ public class Server {
 		private OutputStream sout;
 		ObjectOutputStream dObjOut;
 		DataOutputStream dOut;
+		DataInputStream din;
 		String myRoomName = "";
 		Room myRoom = null;
 		int playerId = -1;
 
-		/**
-		 * Сохраняем сокет, пробуем создать читателя и писателя. Если не
-		 * получается - вылетаем без создания объекта
-		 * 
-		 * @param socketParam
-		 *            сокет
-		 * @throws IOException
-		 *             Если ошибка в создании br || bw
-		 */
 		User(Socket socketParam) throws IOException {
 			s = socketParam;
-			ds = new Socket(s.getInetAddress(), s.getPort() +1);
+			ds = new Socket(s.getInetAddress(), s.getPort() + 1);
 			this.sin = s.getInputStream();
 			this.sout = s.getOutputStream();
 			dObjOut = new ObjectOutputStream(ds.getOutputStream());
 			dOut = new DataOutputStream(ds.getOutputStream());
+			din = new DataInputStream(ds.getInputStream());
+			Thread secondReader = new Thread(new Runnable() {
+
+				@Override
+				public void run() {
+
+					while (!ds.isClosed()) {
+						String line = null;
+
+						try {
+							line = din.readUTF();
+							System.out
+									.println("The dumb client just sent me this line : "
+											+ line);
+						} catch (IOException e) {
+							close(); // если не получилось - закрываем сокет.
+						}
+
+						if (line == null) {
+							close(); 
+						} else if ("Up".equals(line)) {
+
+						} else if ("Down".equals(line)) {
+							SendRoomList();
+
+						} else if ("Up".equals(line)) {
+
+						} else if ("Down".equals(line)) {
+							SendRoomList();
+						}
+					}
+				}
+			});
 		}
 
 		public void run() {
@@ -165,29 +190,15 @@ public class Server {
 				if (line == null) { // если клиент отключился в штатном
 									// режиме.
 					close(); // то закрываем сокет
-				} else if ("shutdown".equals(line)) { // если поступила команда
-														// "погасить сервер",
-														// то...
-					serverThread.interrupt(); // сначала возводим флаг у
-												// северной нити о необходимости
-												// прерваться.
-					try {
-						new Socket("localhost", port); // создаем фейк-коннект
-														// (чтобы выйти из
-														// .accept())
-					} catch (IOException ignored) { // ошибки неинтересны
-					} finally {
-						shutdownServer(); // а затем глушим сервер вызовом его
-											// метода shutdownServer().
-					}
-				} else if ("RefreshRoomList".equals(line)) {
+				} else if ("Up".equals(line)) {
+
+				} else if ("Down".equals(line)) {
 					SendRoomList();
-				} else if (line.contains("CreateRoom:")) {
-					CreateRoom(line);
-				} else if (line.contains("EnterRoom:")) {
-					EnterRoom(line);
-				} else if (line.contains("LeaveRoom")) {
-					LeaveRoom();
+
+				} else if ("Up".equals(line)) {
+
+				} else if ("Down".equals(line)) {
+					SendRoomList();
 				}
 			}
 		}
@@ -565,7 +576,7 @@ public class Server {
 				cs.add(character.getCharState());
 			}
 			return cs;
-		}		
+		}
 
 		abstract class Character {
 			private int id;
@@ -668,5 +679,3 @@ public class Server {
 	}
 
 }
-
-
