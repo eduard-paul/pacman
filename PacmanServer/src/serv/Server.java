@@ -1,14 +1,13 @@
 package serv;
 
-import java.awt.Color;
 import java.awt.Point;
+import java.awt.geom.Point2D;
 import java.io.DataInputStream;
 import java.io.DataOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.ObjectOutputStream;
 import java.io.OutputStream;
-import java.io.Serializable;
 import java.net.ServerSocket;
 import java.net.Socket;
 import java.util.Timer;
@@ -511,7 +510,7 @@ public class Server {
 				new Point(1, 26), new Point(29, 26), new Point(29, 1) };
 		private final Point[] defaultGhostsStartPoints = { new Point(13, 11),
 				new Point(15, 11), new Point(13, 16), new Point(15, 16) };
-		private final int DefaultSpeed = 1000;
+		private final int DefaultSpeed = 300;
 		private final int TimerPeriod = 30;
 
 		int playersNum, ghostsNum = 4;
@@ -523,7 +522,6 @@ public class Server {
 			public void run() {
 				for (Character character : characters) {
 					character.move();
-					// player.printCoords();
 				}
 			}
 		};
@@ -567,7 +565,7 @@ public class Server {
 		private void initialize() {
 
 			board = new DefaultBoard();
-
+			
 			for (int i = 0; i < playersNum; i++) {
 				int direction = 1; // "1" - rigth, "-1" - left,
 									// "2" - down, "-2" - up
@@ -582,7 +580,7 @@ public class Server {
 				if (i % 2 == 1)
 					direction = -1;
 				characters.add(new Ghost(defaultGhostsStartPoints[i],
-						direction, DefaultSpeed, -1 - i));
+						direction, DefaultSpeed, -1 - i, characters.get(i % playersNum)));
 				board.setCellState(defaultGhostsStartPoints[i], -2);
 			}
 		}
@@ -627,10 +625,12 @@ public class Server {
 		}
 
 		abstract class Character {
-			private int id;
-			private Point cell;
-			private double dist = 0;
-			private int direction, speed, desiredDirection;
+			protected int id;
+			protected Point cell;
+			protected double dist = 0;
+			protected int direction;
+			protected int speed;
+			protected int desiredDirection;
 
 			public CharacterState getCharState() {
 				CharacterState s = new CharacterState();
@@ -644,7 +644,7 @@ public class Server {
 
 			/**
 			 * @param direction
-			 *            "1" - rigth, "-1" - left, "2" - up, "-2" - down
+			 *            "1" - rigth, "-1" - left, "2" - down, "-2" - up
 			 * @param speed
 			 *            Time in ms needed to reach next cell
 			 */
@@ -661,8 +661,6 @@ public class Server {
 			}
 			
 			public void move() {
-				if (Math.abs(desiredDirection) == Math.abs(direction))
-					direction = desiredDirection;
 				if (board.getCellState(NextCell()) != -1
 						|| (Math.abs(dist)>1.1*TimerPeriod / speed)) {
 					dist += 2 * Math.signum(direction) * TimerPeriod / speed;
@@ -674,23 +672,19 @@ public class Server {
 
 					}
 				}
-				if (board.getCellState(DesiredCell()) != -1
-						&& (Math.abs(dist)<1.1*TimerPeriod / speed)){
-//					if (Math.abs(direction) != Math.abs(desiredDirection))
-//						dist = -dist;
-					direction = desiredDirection;
-				}
 			}
 
-			private Point DesiredCell() {
+			protected Point DesiredCell() {
 				Point result = (Point) cell.clone();
 				
 				switch (desiredDirection) {
 				case 1:
 					result.y++;
+					if (result.y == 27) result.y = 1;
 					break;
 				case -1:
 					result.y--;
+					if (result.y == -1) result.y = 27;
 					break;
 				case 2:
 					result.x++;
@@ -706,15 +700,17 @@ public class Server {
 				return result;
 			}
 			
-			private Point NextCell() {
+			protected Point NextCell() {
 				Point result = (Point) cell.clone();
 
 				switch (direction) {
 				case 1:
 					result.y++;
+					if (result.y == 27) result.y = 1;
 					break;
 				case -1:
 					result.y--;
+					if (result.y == -1) result.y = 27;
 					break;
 				case 2:
 					result.x++;
@@ -729,37 +725,168 @@ public class Server {
 
 				return result;
 			}
-
-			public void printCoords() {
-				System.out.println(cell.toString() + " "
-						+ Double.toString(dist));
-			}
 		}
 
 		private class Player extends Character {
 			/**
 			 * @param direction
-			 *            "1" - rigth, "-1" - left, "2" - up, "-2" - down
+			 *            "1" - rigth, "-1" - left, "2" - down, "-2" - up
 			 * @param speed
 			 *            Time in ms needed to reach next cell
 			 */
 			public Player(Point cell, int direction, int speed, int id) {
 				super(cell, direction, speed, id);
 			}
-
+			
+			@Override
+			public void move() {
+				if (Math.abs(desiredDirection) == Math.abs(direction))
+					direction = desiredDirection;
+				
+				super.move();
+				
+				if (board.getCellState(DesiredCell()) != -1
+						&& (Math.abs(dist)<1.1*TimerPeriod / speed)){
+					direction = desiredDirection;
+				}
+			}
+			
 		}
 
 		private class Ghost extends Character {
+			private Character aim;
 			/**
 			 * @param direction
-			 *            "1" - rigth, "-1" - left, "2" - up, "-2" - down
+			 *            "1" - rigth, "-1" - left, "2" - down, "-2" - up
 			 * @param speed
 			 *            Time in ms needed to reach next cell
 			 */
-			public Ghost(Point cell, int direction, int speed, int id) {
+			public Ghost(Point cell, int direction, int speed, int id, Character character) {
 				super(cell, direction, speed, id);
+				this.aim = character;
 			}
 
+			@Override
+			public void move() {
+
+				Point right = RightCell();
+				Point left = LeftCell();
+				Point next = NextCell();
+				
+				double minDistToAim = Double.MAX_VALUE;
+				
+				if (board.getCellState(next) != -1 && 
+						next.distance(aim.cell) < minDistToAim){
+					desiredDirection = direction;
+					minDistToAim = next.distance(aim.cell);
+				}
+				if (board.getCellState(right) != -1 && 
+						right.distance(aim.cell) < minDistToAim){
+					TurnRight();
+					minDistToAim = right.distance(aim.cell);
+				}
+				if (board.getCellState(left) != -1 && 
+						left.distance(aim.cell) < minDistToAim){
+					TurnLeft();
+					minDistToAim = left.distance(aim.cell);
+				}	
+				
+				super.move();
+				
+				if (board.getCellState(DesiredCell()) != -1
+						&& (Math.abs(dist)<1.1*TimerPeriod / speed)){
+					direction = desiredDirection;
+				}
+			}
+			
+			private void TurnRight(){
+				switch (direction) {
+				case 1:
+					desiredDirection = 2;
+					break;
+				case -1:
+					desiredDirection = -2;
+					break;
+				case 2:
+					desiredDirection = -1;
+					break;
+				case -2:
+					desiredDirection = 1;
+					break;
+
+				default:
+					break;
+				}
+			}
+			
+			private void TurnLeft(){
+				switch (direction) {
+				case 1:
+					desiredDirection = -2;
+					break;
+				case -1:
+					desiredDirection = 2;
+					break;
+				case 2:
+					desiredDirection = 1;
+					break;
+				case -2:
+					desiredDirection = -1;
+					break;
+
+				default:
+					break;
+				}
+			}
+				
+			
+			private Point RightCell() {
+				Point result = (Point) cell.clone();
+
+				switch (direction) {
+				case 1:
+					result.x++;
+					break;
+				case -1:
+					result.x--;
+					break;
+				case 2:
+					result.y--;
+					break;
+				case -2:
+					result.y++;
+					break;
+
+				default:
+					break;
+				}
+				return result;
+			}
+			
+			private Point LeftCell() {
+				Point result = (Point) cell.clone();
+
+				switch (direction) {
+				case 1:
+					result.x--;
+					break;
+				case -1:
+					result.x++;
+					break;
+				case 2:
+					result.y++;
+					break;
+				case -2:
+					result.y--;
+					break;
+
+				default:
+					break;
+				}
+
+				return result;
+			}
+			
 		}
 
 	}
