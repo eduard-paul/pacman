@@ -129,7 +129,10 @@ public class App {
 				for (int col = 0; col < board[0].length; col++) {
 					if (board[row][col] == -1) {
 						g2dBoard.setColor(Color.lightGray);
-					} else {
+					} else if (board[row][col] == 5) {
+						g2dBoard.setColor(Color.cyan);
+					}
+					else {
 						g2dBoard.setColor(Color.white);
 					}
 					g2dBoard.fillRect(col * cellSize, row * cellSize, cellSize,

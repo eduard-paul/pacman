@@ -509,7 +509,7 @@ public class Server {
 		private final int[][] defaultBoard = {
 				{ -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
 						-1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1 },
-				{ -1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, -1, -1, 0, 0, 0, 0,
+				{ -1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 5, 0, 0, -1, -1, 0, 0, 0, 0,
 						0, 0, 0, 0, 0, 0, 0, 0, -1 },
 				{ -1, 0, -1, -1, -1, -1, 0, -1, -1, -1, -1, -1, 0, -1, -1, 0,
 						-1, -1, -1, -1, -1, 0, -1, -1, -1, -1, 0, -1 },
@@ -576,7 +576,9 @@ public class Server {
 		private final int DefaultSpeed = 300;
 		private final int TimerPeriod = 30;
 
-		int playersNum, ghostsNum = 4, catchedPlayers = 0;
+		int playersNum, ghostsNum = 4;
+		int catchedPlayers = 0;
+		int totalFood = 0, catchedFood = 0;
 		Board board;
 		Vector<Character> characters = new Vector<Character>();
 		Timer timer = new java.util.Timer();
@@ -634,7 +636,13 @@ public class Server {
 
 			this.playersNum = playersNum;
 			board = new DefaultBoard();
-
+			for (int[] row : board.board) {
+				for (int i : row) {
+					if (i == 0)
+						totalFood++;
+				}
+			}
+			totalFood = 1;
 		}
 
 		@Override
@@ -679,6 +687,7 @@ public class Server {
 						direction, DefaultSpeed);
 			}
 			catchedPlayers = 0;
+			catchedFood = 0;
 			restarting = false;
 		}
 
@@ -728,6 +737,7 @@ public class Server {
 			for (Character character : characters) {
 				cs.add(character.getCharState());
 			}
+			GameState gs = new GameState(cs, board.board);
 			return cs;
 		}
 
@@ -738,6 +748,7 @@ public class Server {
 			protected int direction;
 			protected int speed;
 			protected int desiredDirection;
+			protected int myFood = -1;
 
 			public CharacterState getCharState() {
 				CharacterState s = new CharacterState();
@@ -774,45 +785,7 @@ public class Server {
 				desiredDirection = dd;
 			}
 
-			public void move() {
-				if (board.getCellState(NextCell()) != -1
-						|| (Math.abs(dist) > 1.1 * TimerPeriod / speed)) {
-					dist += 2 * Math.signum(direction) * TimerPeriod / speed;
-					if (Math.abs(dist) >= 1) {
-						if (this.id > 0 && board.getCellState(NextCell()) < -1) {
-							this.speed = 0;
-							this.dist = 0;
-							this.cell = new Point(0, this.id);
-							catchedPlayers++;
-							if (catchedPlayers == playersNum) {
-								restarting = true;
-							}
-						} else {
-							if (this.id < 0
-									&& board.getCellState(NextCell()) > 0) {
-								Character player = null;
-								for (Character character : characters) {
-									if (character.id == board
-											.getCellState(NextCell())) {
-										player = character;
-									}
-								}
-								player.speed = 0;
-								player.dist = 0;
-								player.cell = new Point(0, player.id);
-								catchedPlayers++;
-								if (catchedPlayers == playersNum) {
-									restarting = true;
-								}
-							}
-							board.setCellState(cell, 0);
-							cell = NextCell();
-							dist -= 2 * Math.signum(dist);
-
-						}
-					}
-				}
-			}
+			public abstract void move();
 
 			protected Point DesiredCell() {
 				Point result = (Point) cell.clone();
@@ -880,6 +853,7 @@ public class Server {
 			 */
 			public Player(Point cell, int direction, int speed, int id) {
 				super(cell, direction, speed, id);
+				myFood = 0;
 			}
 
 			@Override
@@ -887,7 +861,32 @@ public class Server {
 				if (Math.abs(desiredDirection) == Math.abs(direction))
 					direction = desiredDirection;
 
-				super.move();
+				if (board.getCellState(NextCell()) != -1
+						|| (Math.abs(dist) > 1.1 * TimerPeriod / speed)) {
+					dist += 2 * Math.signum(direction) * TimerPeriod / speed;
+					if (Math.abs(dist) >= 1) {
+						if (board.getCellState(NextCell()) < -1) {
+							this.speed = 0;
+							this.dist = 0;
+							this.cell = new Point(0, playersNum - catchedPlayers);
+							catchedPlayers++;
+							if (catchedPlayers == playersNum) {
+								restarting = true;
+							}
+						} else {
+							board.setCellState(cell, 0);
+							cell = NextCell();
+							dist -= 2 * Math.signum(dist);
+							if (board.getCellState(cell) == 5){
+								myFood++;
+								catchedFood++;
+								if (catchedFood == totalFood){
+									ShowResults();
+								}
+							}
+						}
+					}
+				}
 
 				if (this.speed != 0)
 					board.setCellState(cell, this.id);
@@ -903,6 +902,7 @@ public class Server {
 
 		private class Ghost extends Character {
 			private Character aim;
+			private boolean foodFlag = true; // If the ghost picked up food
 
 			/**
 			 * @param direction
@@ -928,10 +928,10 @@ public class Server {
 				double minDistToAim = Double.MAX_VALUE;
 
 				Random rand = new Random();
-				
+
 				int offsetX = (rand.nextInt(3) - 1) * 4;
 				int offsetY = (rand.nextInt(3) - 1) * 4;
-				
+
 				aimCell = new Point(aim.cell.x + offsetX, aim.cell.y + offsetY);
 
 				if (board.getCellState(next) != -1
@@ -950,7 +950,42 @@ public class Server {
 					minDistToAim = left.distance(aimCell);
 				}
 
-				super.move();
+				if (board.getCellState(NextCell()) != -1
+						|| (Math.abs(dist) > 1.1 * TimerPeriod / speed)) {
+					dist += 2 * Math.signum(direction) * TimerPeriod / speed;
+					if (Math.abs(dist) >= 1) {
+						if (board.getCellState(NextCell()) > 0
+								&& board.getCellState(NextCell()) != 5) {
+							Character player = null;
+							for (Character character : characters) {
+								if (character.id == board
+										.getCellState(NextCell())) {
+									player = character;
+								}
+							}
+							player.speed = 0;
+							player.dist = 0;
+							player.cell = new Point(0, catchedPlayers);
+							catchedPlayers++;
+							if (catchedPlayers == playersNum) {
+								restarting = true;
+							}
+						}
+						if (foodFlag)
+							board.setCellState(cell, 5);
+						else
+							board.setCellState(cell, 0);
+						
+						cell = NextCell();
+						
+						if (board.getCellState(cell) == 5)
+							foodFlag = true;
+						else
+							foodFlag = false;
+						
+						dist -= 2 * Math.signum(dist);
+					}
+				}
 
 				board.setCellState(cell, this.id - 1);
 
@@ -1047,6 +1082,21 @@ public class Server {
 				return result;
 			}
 
+		}
+
+		public void ShowResults() {
+			for (int i=0;i<playersNum-catchedPlayers;i++) {
+				Character max = characters.get(0);
+				for (Character character : characters) {
+					if (max.myFood < character.myFood) max = character;
+				}
+				max.myFood = 0;
+				max.speed = 0;
+				max.dist = 0;
+				max.cell = new Point(0, i);
+					
+			}
+			restarting = true;
 		}
 
 	}
