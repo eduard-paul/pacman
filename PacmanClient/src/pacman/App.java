@@ -13,6 +13,7 @@ import java.awt.image.BufferedImage;
 import javax.swing.*;
 
 import myLib.CharacterState;
+import myLib.GameState;
 
 import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
@@ -45,8 +46,7 @@ public class App {
 	DataInputStream din;
 	String[] roomList;
 	String myRoom = "";
-	Vector<CharacterState> gameState;
-	int[][] board;
+	GameState gameState;
 	SocketReader processor;
 	Thread thread;
 	Timer painter;
@@ -63,6 +63,7 @@ public class App {
 	private JButton btnLeaveRoom;
 	private JButton btnRefresh;
 	private DrawingArea drawingArea;
+	public int[][] board;
 
 	class DrawingArea extends JPanel {
 
@@ -86,10 +87,12 @@ public class App {
 		}
 
 		public void PaintState() {
-			imgBoard.copyData(image.getRaster());
-
-			if (gameState != null)
-				for (CharacterState ch : gameState) {
+			
+			if (gameState != null){
+				board = gameState.board;
+				PaintBoard();
+				imgBoard.copyData(image.getRaster());
+				for (CharacterState ch : gameState.cs) {
 					g2dImage.setColor(Color.DARK_GRAY);
 					switch (ch.id) {
 					case 1:
@@ -115,6 +118,7 @@ public class App {
 						y += (ch.dist * cellSize / 2);
 					g2dImage.fillOval(y, x, cellSize, cellSize);
 				}
+			}
 			repaint();
 		}
 
@@ -538,9 +542,9 @@ public class App {
 
 					drawingArea.PaintBoard();
 					StartGame();
-
-					while (true)
-						gameState = (Vector<CharacterState>) doin.readObject();
+					while (true){
+						gameState = (GameState) doin.readObject();
+					}
 
 				} catch (Exception e) {
 					gameState = null;
