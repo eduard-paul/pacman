@@ -9,6 +9,7 @@ import java.io.ObjectOutputStream;
 import java.io.OutputStream;
 import java.net.ServerSocket;
 import java.net.Socket;
+import java.util.Random;
 import java.util.Timer;
 import java.util.TimerTask;
 import java.util.Vector;
@@ -486,7 +487,8 @@ public class Server {
 
 		public void RemovePlayer(User player) {
 			players.remove(player);
-			if (!IsStarted()) currPlayers = players.size();
+			if (!IsStarted())
+				currPlayers = players.size();
 			if (players.size() == 0) {
 				rooms.remove(this);
 			}
@@ -529,15 +531,15 @@ public class Server {
 						-1, -1, -1, -1, -1, 0, -1, -1, -1, -1, -1, -1 },
 				{ -1, -1, -1, -1, -1, -1, 0, -1, -1, 0, 0, 0, 0, 0, 0, 0, 0, 0,
 						0, -1, -1, 0, -1, -1, -1, -1, -1, -1 },
-				{ -1, -1, -1, -1, -1, -1, 0, -1, -1, 0, -1, -1, -1, -2, -2, -1,
+				{ -1, -1, -1, -1, -1, -1, 0, -1, -1, 0, -1, -1, -1, 0, 0, -1,
 						-1, -1, 0, -1, -1, 0, -1, -1, -1, -1, -1, -1 },
 				{ -1, -1, -1, -1, -1, -1, 0, -1, -1, 0, -1, 0, 0, 0, 0, 0, 0,
 						-1, 0, -1, -1, 0, -1, -1, -1, -1, -1, -1 },
-				{ 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, -1, 0, 0, 0, 0, 0, 0, -1, 0, 0,
-						0, 0, 0, 0, 0, 0, 0, 0 },
+				{ 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, -1, 0, -1, -1, -1, -1, 0, -1,
+						0, 0, 0, 0, 0, 0, 0, 0, 0, 0 },
 				{ -1, -1, -1, -1, -1, -1, 0, -1, -1, 0, -1, 0, 0, 0, 0, 0, 0,
 						-1, 0, -1, -1, 0, -1, -1, -1, -1, -1, -1 },
-				{ -1, -1, -1, -1, -1, -1, 0, -1, -1, 0, -1, -1, -1, -1, -1, -1,
+				{ -1, -1, -1, -1, -1, -1, 0, -1, -1, 0, -1, -1, -1, 0, 0, -1,
 						-1, -1, 0, -1, -1, 0, -1, -1, -1, -1, -1, -1 },
 				{ -1, -1, -1, -1, -1, -1, 0, -1, -1, 0, 0, 0, 0, 0, 0, 0, 0, 0,
 						0, -1, -1, 0, -1, -1, -1, -1, -1, -1 },
@@ -574,15 +576,24 @@ public class Server {
 		private final int DefaultSpeed = 300;
 		private final int TimerPeriod = 30;
 
-		int playersNum, ghostsNum = 4;
+		int playersNum, ghostsNum = 4, catchedPlayers = 0;
 		Board board;
 		Vector<Character> characters = new Vector<Character>();
 		Timer timer = new java.util.Timer();
+		protected boolean restarting = false;
 
 		TimerTask task = new TimerTask() {
 			public void run() {
 				for (Character character : characters) {
-					character.move();
+					if (character.speed != 0)
+						character.move();
+				}
+				if (restarting) {
+					try {
+						Thread.sleep(5000);
+					} catch (InterruptedException e) {
+					}
+					Restart();
 				}
 			}
 		};
@@ -628,16 +639,15 @@ public class Server {
 
 		@Override
 		public void run() {
-			
 			for (int i = 0; i < playersNum; i++) {
-				int direction = 1; 
+				int direction = 1;
 				if (i % 2 == 1)
 					direction = -1;
 				characters.add(new Player(defaultPlayersStartPoints[i],
 						direction, DefaultSpeed, i + 1));
 				board.setCellState(defaultPlayersStartPoints[i], 1);
 			}
-			
+
 			for (int i = 0; i < ghostsNum; i++) {
 				int direction = 1;
 				if (i % 2 == 1)
@@ -647,12 +657,42 @@ public class Server {
 								% playersNum)));
 				board.setCellState(defaultGhostsStartPoints[i], -2);
 			}
-			
 			timer.schedule(task, 0, TimerPeriod);
+		}
+
+		private void Restart() {
+			board.Clean();
+			for (int i = 0; i < playersNum; i++) {
+				int direction = 1;
+				if (i % 2 == 1)
+					direction = -1;
+				Character player = characters.get(i);
+				player.Setter(defaultPlayersStartPoints[i], direction,
+						DefaultSpeed);
+			}
+			for (int i = playersNum; i < playersNum + ghostsNum; i++) {
+				int direction = 1;
+				if (i % 2 == 1)
+					direction = -1;
+				Character ghost = characters.get(i);
+				ghost.Setter(defaultGhostsStartPoints[i - playersNum],
+						direction, DefaultSpeed);
+			}
+			catchedPlayers = 0;
+			restarting = false;
 		}
 
 		private class Board {
 			protected int board[][];
+			protected int cleanBoard[][];
+
+			public void Clean() {
+				for (int i = 0; i < board.length; i++) {
+					for (int j = 0; j < board[0].length; j++) {
+						board[i][j] = cleanBoard[i][j];
+					}
+				}
+			}
 
 			/**
 			 * @param state
@@ -672,7 +712,14 @@ public class Server {
 
 		private class DefaultBoard extends Board {
 			public DefaultBoard() {
-				board = defaultBoard.clone();
+				board = new int[defaultBoard.length][defaultBoard[0].length];
+				cleanBoard = new int[defaultBoard.length][defaultBoard[0].length];
+				for (int i = 0; i < board.length; i++) {
+					for (int j = 0; j < board[0].length; j++) {
+						board[i][j] = defaultBoard[i][j];
+						cleanBoard[i][j] = defaultBoard[i][j];
+					}
+				}
 			}
 		}
 
@@ -716,6 +763,13 @@ public class Server {
 				this.id = id;
 			}
 
+			public void Setter(Point cell, int direction, int speed) {
+				this.cell = (Point) cell.clone();
+				this.direction = direction;
+				this.desiredDirection = direction;
+				this.speed = speed;
+			}
+
 			public void setDesiredDirection(int dd) {
 				desiredDirection = dd;
 			}
@@ -725,11 +779,37 @@ public class Server {
 						|| (Math.abs(dist) > 1.1 * TimerPeriod / speed)) {
 					dist += 2 * Math.signum(direction) * TimerPeriod / speed;
 					if (Math.abs(dist) >= 1) {
-						board.setCellState(cell, 0);
-						board.setCellState(NextCell(), 1);
-						cell = NextCell();
-						dist -= 2 * Math.signum(dist);
+						if (this.id > 0 && board.getCellState(NextCell()) < -1) {
+							this.speed = 0;
+							this.dist = 0;
+							this.cell = new Point(0, this.id);
+							catchedPlayers++;
+							if (catchedPlayers == playersNum) {
+								restarting = true;
+							}
+						} else {
+							if (this.id < 0
+									&& board.getCellState(NextCell()) > 0) {
+								Character player = null;
+								for (Character character : characters) {
+									if (character.id == board
+											.getCellState(NextCell())) {
+										player = character;
+									}
+								}
+								player.speed = 0;
+								player.dist = 0;
+								player.cell = new Point(0, player.id);
+								catchedPlayers++;
+								if (catchedPlayers == playersNum) {
+									restarting = true;
+								}
+							}
+							board.setCellState(cell, 0);
+							cell = NextCell();
+							dist -= 2 * Math.signum(dist);
 
+						}
 					}
 				}
 			}
@@ -809,10 +889,14 @@ public class Server {
 
 				super.move();
 
+				if (this.speed != 0)
+					board.setCellState(cell, this.id);
+
 				if (board.getCellState(DesiredCell()) != -1
 						&& (Math.abs(dist) < 1.1 * TimerPeriod / speed)) {
 					direction = desiredDirection;
 				}
+
 			}
 
 		}
@@ -843,14 +927,12 @@ public class Server {
 
 				double minDistToAim = Double.MAX_VALUE;
 
-				if (id == -1)
-					aimCell = aim.cell;
-				if (id == -2)
-					aimCell = new Point(aim.cell.x + 4, aim.cell.y);
-				if (id == -3)
-					aimCell = new Point(aim.cell.x - 4, aim.cell.y);
-				if (id == -4)
-					aimCell = new Point(aim.cell.x, aim.cell.y - 4);
+				Random rand = new Random();
+				
+				int offsetX = (rand.nextInt(3) - 1) * 4;
+				int offsetY = (rand.nextInt(3) - 1) * 4;
+				
+				aimCell = new Point(aim.cell.x + offsetX, aim.cell.y + offsetY);
 
 				if (board.getCellState(next) != -1
 						&& next.distance(aimCell) < minDistToAim) {
@@ -869,6 +951,8 @@ public class Server {
 				}
 
 				super.move();
+
+				board.setCellState(cell, this.id - 1);
 
 				if (board.getCellState(DesiredCell()) != -1
 						&& (Math.abs(dist) < 1.1 * TimerPeriod / speed)) {
