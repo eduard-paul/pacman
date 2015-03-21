@@ -23,7 +23,7 @@ public class Server {
 	private Thread serverThread; // главная нить обработки сервер-сокета
 	private int port; // порт сервер сокета.
 	// очередь, где храняться все SocketProcessorы для рассылки
-	BlockingQueue<User> q = new LinkedBlockingQueue<User>();
+	BlockingQueue<User> allUsers = new LinkedBlockingQueue<User>();
 	BlockingQueue<Room> rooms = new LinkedBlockingQueue<Room>();
 
 	public static void main(String[] args) throws IOException {
@@ -43,9 +43,6 @@ public class Server {
 
 	}
 
-	/**
-	 * главный цикл прослушивания/ожидания коннекта.
-	 */
 	void run() {
 		serverThread = Thread.currentThread(); // со старта сохраняем нить
 												// (чтобы можно ее было
@@ -70,8 +67,8 @@ public class Server {
 					thread.setDaemon(true); // ставим ее в демона (чтобы не
 											// ожидать ее закрытия)
 					thread.start(); // запускаем
-					q.offer(processor); // добавляем в список активных
-										// сокет-процессоров
+					allUsers.offer(processor); // добавляем в список активных
+					// сокет-процессоров
 					System.out.println(s.toString() + " connected");
 				} // тут прикол в замысле. Если попытка создать (new
 					// SocketProcessor()) безуспешна,
@@ -103,7 +100,7 @@ public class Server {
 	 */
 	private synchronized void shutdownServer() {
 		// обрабатываем список рабочих коннектов, закрываем каждый
-		for (User s : q) {
+		for (User s : allUsers) {
 			s.close();
 		}
 		if (!ss.isClosed()) {
@@ -115,8 +112,10 @@ public class Server {
 	}
 
 	private class User implements Runnable {
+		/** Request socket */
 		Socket s;
-		Socket ds; // data socket
+		/** Data socket */
+		Socket ds;
 		private InputStream sin;
 		private OutputStream sout;
 		ObjectOutputStream dObjOut;
@@ -151,7 +150,7 @@ public class Server {
 						}
 
 						if (line == null) {
-							close(); 
+							close();
 						} else {
 							myRoom.Command(line, playerId);
 						}
@@ -204,6 +203,8 @@ public class Server {
 					EnterRoom(line);
 				} else if (line.contains("LeaveRoom")) {
 					LeaveRoom();
+				} else if (line.contains("SpectateRoom:")) {
+					SpectateRoom(line);
 				}
 			}
 		}
@@ -218,12 +219,11 @@ public class Server {
 		}
 
 		public synchronized void LeaveRoom() {
-			for (Room room : rooms) {
-				if (room.name.equals(myRoomName)) {
-					room.RemoveUser(this);
-					myRoomName = "";
-				}
-			}
+			if ("spectate".equals(myRoomName)) myRoom.RemoveSpectator(this);
+			else myRoom.RemovePlayer(this);
+			myRoomName = "";
+			myRoom = null;
+			playerId = -1;
 		}
 
 		public synchronized void CreateRoom(String line) {
@@ -261,11 +261,40 @@ public class Server {
 			boolean failed = true;
 			for (Room room : rooms) {
 				if (room.name.equals(name)) {
-					if (room.currPlayers < room.maxPlayers) {
+					if (room.currPlayers < room.maxPlayers
+							&& !room.IsStarted()) {
 						room.AddPlayer(this);
 						myRoomName = name;
+						myRoom = room;
 						failed = false;
 					}
+				}
+			}
+			if (!failed) {
+				try {
+					out.writeUTF("success");
+					out.flush();
+				} catch (IOException e) {
+				}
+			} else {
+				try {
+					out.writeUTF("fail");
+					out.flush();
+				} catch (IOException e) {
+				}
+			}
+		}
+		
+		public synchronized void SpectateRoom(String line) {
+			DataOutputStream out = new DataOutputStream(sout);
+			String name = line.substring(13);
+			boolean failed = true;
+			for (Room room : rooms) {
+				if (room.name.equals(name)) {
+						room.AddSpectator(this);
+						myRoomName = "spectate";
+						myRoom = room;
+						failed = false;					
 				}
 			}
 			if (!failed) {
@@ -294,33 +323,27 @@ public class Server {
 				if (list.isEmpty())
 					out.writeUTF("empty");
 				else
-					out.writeUTF(list.substring(1)); // отсылаем клиенту обратно
-														// ту самую
-				// строку текста.
-				out.flush(); // заставляем поток закончить передачу данных.
+					out.writeUTF(list.substring(1));
+				out.flush();
 			} catch (IOException e) {
-				close(); // если глюк в момент отправки - закрываем данный
-							// сокет.
+				close();
 			}
 		}
 
 		public synchronized void close() {
-			if (!this.myRoomName.isEmpty()) {
-				for (Room room : rooms) {
-					if (room.name.equals(this.myRoomName)) {
-						room.RemoveUser(this);
-					}
-				}
+			if (!myRoomName.isEmpty()) { // If in some room leave it
+				if ("spectate".equals(myRoomName)) myRoom.RemoveSpectator(this);
+				else myRoom.RemovePlayer(this);
 			}
-			q.remove(this);
-			if (!s.isClosed()) {
+			allUsers.remove(this); // Remove itself from global user list
+			if (!s.isClosed()) { // Try to close request socket
 				try {
 					s.close();
 					System.out.println(s.toString() + " disconnected");
 				} catch (IOException ignored) {
 				}
 			}
-			if (!ds.isClosed()) {
+			if (!ds.isClosed()) { // Try to close data socket
 				try {
 					ds.close();
 				} catch (IOException ignored) {
@@ -358,7 +381,9 @@ public class Server {
 		private int maxPlayers;
 		private int currPlayers;
 		private Game game;
-		private BlockingQueue<User> users = new LinkedBlockingQueue<User>();
+		private boolean isStarted = false;
+		private BlockingQueue<User> players = new LinkedBlockingQueue<User>();
+		private BlockingQueue<User> spectators = new LinkedBlockingQueue<User>();
 		private Timer timer = new java.util.Timer();
 
 		private TimerTask task = new TimerTask() {
@@ -368,6 +393,10 @@ public class Server {
 			}
 		};
 
+		public boolean IsStarted() {
+			return isStarted;
+		}
+		
 		public void Command(String line, int id) {
 			if ("Up".equals(line)) {
 				game.GoUp(id);
@@ -379,13 +408,13 @@ public class Server {
 				game.GoRight(id);
 			}
 		}
-		
+
 		public Room(String name, int maxPlayers, User firstPlayer) {
 
 			this.name = name;
 			this.maxPlayers = maxPlayers;
 			this.currPlayers = 1;
-			users.offer(firstPlayer);
+			players.offer(firstPlayer);
 
 			game = new Game(maxPlayers);
 
@@ -394,19 +423,29 @@ public class Server {
 		}
 
 		public void AddPlayer(User firstPlayer) {
-			if (currPlayers < maxPlayers) {
-				users.offer(firstPlayer);
-				currPlayers = users.size();
+			if (currPlayers < maxPlayers
+					&& !isStarted) {
+				players.offer(firstPlayer);
+				currPlayers = players.size();
 				if (currPlayers == maxPlayers)
+					isStarted = true;
 					StartGame();
 			}
+		}
+		
+		public void AddSpectator(User spectator) {
+				spectators.offer(spectator);
+				currPlayers = players.size();
 		}
 
 		private void StartGame() {
 			int i = 1;
-			for (User user : users) {
-				user.playerId = i++;
-				user.SendStart();
+			for (User player : players) {
+				player.playerId = i++;
+				player.SendStart();
+			}
+			for (User spectator : spectators) {
+				spectator.SendStart();
 			}
 			SendBoard();
 			timer.schedule(task, 0, 50);
@@ -421,23 +460,33 @@ public class Server {
 
 		private void SendState() {
 			Vector<CharacterState> cs = game.getGameState();
-			for (User user : users) {
-				user.SendState(cs);
+			for (User player : players) {
+				player.SendState(cs);
+			}
+			for (User spectator : spectators) {
+				spectator.SendState(cs);
 			}
 		}
 
 		private void SendBoard() {
-			for (User user : users) {
-				user.SendBoard(game.board.board);
+			for (User player : players) {
+				player.SendBoard(game.board.board);
+			}
+			for (User spectator : spectators) {
+				spectator.SendBoard(game.board.board);
 			}
 		}
 
-		public void RemoveUser(User user) {
-			users.remove(user);
-			currPlayers = users.size();
+		public void RemovePlayer(User player) {
+			players.remove(player);
+			currPlayers = players.size();
 			if (currPlayers == 0) {
 				rooms.remove(this);
 			}
+		}
+		
+		public void RemoveSpectator(User spectator) {
+			spectators.remove(spectator);
 		}
 	}
 
@@ -525,35 +574,38 @@ public class Server {
 			}
 		};
 
-		public void GoUp(int id){
+		public void GoUp(int id) {
 			for (Character ch : characters) {
 				if (ch.id == id) {
 					ch.setDesiredDirection(-2);
 				}
 			}
 		}
-		public void GoDown(int id){
+
+		public void GoDown(int id) {
 			for (Character ch : characters) {
 				if (ch.id == id) {
 					ch.setDesiredDirection(2);
 				}
 			}
 		}
-		public void GoLeft(int id){
+
+		public void GoLeft(int id) {
 			for (Character ch : characters) {
 				if (ch.id == id) {
 					ch.setDesiredDirection(-1);
 				}
 			}
 		}
-		public void GoRight(int id){
+
+		public void GoRight(int id) {
 			for (Character ch : characters) {
 				if (ch.id == id) {
 					ch.setDesiredDirection(1);
 				}
 			}
 		}
-		
+
 		public Game(int playersNum) {
 
 			this.playersNum = playersNum;
@@ -564,7 +616,7 @@ public class Server {
 		private void initialize() {
 
 			board = new DefaultBoard();
-			
+
 			for (int i = 0; i < playersNum; i++) {
 				int direction = 1; // "1" - rigth, "-1" - left,
 									// "2" - down, "-2" - up
@@ -579,7 +631,8 @@ public class Server {
 				if (i % 2 == 1)
 					direction = -1;
 				characters.add(new Ghost(defaultGhostsStartPoints[i],
-						direction, DefaultSpeed, -1 - i, characters.get(i % playersNum)));
+						direction, DefaultSpeed, -1 - i, characters.get(i
+								% playersNum)));
 				board.setCellState(defaultGhostsStartPoints[i], -2);
 			}
 		}
@@ -658,10 +711,10 @@ public class Server {
 			public void setDesiredDirection(int dd) {
 				desiredDirection = dd;
 			}
-			
+
 			public void move() {
 				if (board.getCellState(NextCell()) != -1
-						|| (Math.abs(dist)>1.1*TimerPeriod / speed)) {
+						|| (Math.abs(dist) > 1.1 * TimerPeriod / speed)) {
 					dist += 2 * Math.signum(direction) * TimerPeriod / speed;
 					if (Math.abs(dist) >= 1) {
 						board.setCellState(cell, 0);
@@ -675,15 +728,17 @@ public class Server {
 
 			protected Point DesiredCell() {
 				Point result = (Point) cell.clone();
-				
+
 				switch (desiredDirection) {
 				case 1:
 					result.y++;
-					if (result.y == 27) result.y = 1;
+					if (result.y == 27)
+						result.y = 1;
 					break;
 				case -1:
 					result.y--;
-					if (result.y == -1) result.y = 27;
+					if (result.y == -1)
+						result.y = 27;
 					break;
 				case 2:
 					result.x++;
@@ -695,21 +750,23 @@ public class Server {
 				default:
 					break;
 				}
-				
+
 				return result;
 			}
-			
+
 			protected Point NextCell() {
 				Point result = (Point) cell.clone();
 
 				switch (direction) {
 				case 1:
 					result.y++;
-					if (result.y == 27) result.y = 1;
+					if (result.y == 27)
+						result.y = 1;
 					break;
 				case -1:
 					result.y--;
-					if (result.y == -1) result.y = 27;
+					if (result.y == -1)
+						result.y = 27;
 					break;
 				case 2:
 					result.x++;
@@ -736,31 +793,33 @@ public class Server {
 			public Player(Point cell, int direction, int speed, int id) {
 				super(cell, direction, speed, id);
 			}
-			
+
 			@Override
 			public void move() {
 				if (Math.abs(desiredDirection) == Math.abs(direction))
 					direction = desiredDirection;
-				
+
 				super.move();
-				
+
 				if (board.getCellState(DesiredCell()) != -1
-						&& (Math.abs(dist)<1.1*TimerPeriod / speed)){
+						&& (Math.abs(dist) < 1.1 * TimerPeriod / speed)) {
 					direction = desiredDirection;
 				}
 			}
-			
+
 		}
 
 		private class Ghost extends Character {
 			private Character aim;
+
 			/**
 			 * @param direction
 			 *            "1" - rigth, "-1" - left, "2" - down, "-2" - up
 			 * @param speed
 			 *            Time in ms needed to reach next cell
 			 */
-			public Ghost(Point cell, int direction, int speed, int id, Character character) {
+			public Ghost(Point cell, int direction, int speed, int id,
+					Character character) {
 				super(cell, direction, speed, id);
 				this.aim = character;
 			}
@@ -769,45 +828,47 @@ public class Server {
 			public void move() {
 
 				Point aimCell = null;
-				
-				
-				
+
 				Point right = RightCell();
 				Point left = LeftCell();
 				Point next = NextCell();
-				
+
 				double minDistToAim = Double.MAX_VALUE;
-				
-				if (id == -1) aimCell = aim.cell;
-				if (id == -2) aimCell = new Point(aim.cell.x+4, aim.cell.y);
-				if (id == -3) aimCell = new Point(aim.cell.x-4, aim.cell.y);
-				if (id == -4) aimCell = new Point(aim.cell.x, aim.cell.y-4);
-				
-				if (board.getCellState(next) != -1 && 
-						next.distance(aimCell) < minDistToAim){
+
+				if (id == -1)
+					aimCell = aim.cell;
+				if (id == -2)
+					aimCell = new Point(aim.cell.x + 4, aim.cell.y);
+				if (id == -3)
+					aimCell = new Point(aim.cell.x - 4, aim.cell.y);
+				if (id == -4)
+					aimCell = new Point(aim.cell.x, aim.cell.y - 4);
+
+				if (board.getCellState(next) != -1
+						&& next.distance(aimCell) < minDistToAim) {
 					desiredDirection = direction;
 					minDistToAim = next.distance(aimCell);
 				}
-				if (board.getCellState(right) != -1 && 
-						right.distance(aimCell) < minDistToAim){
+				if (board.getCellState(right) != -1
+						&& right.distance(aimCell) < minDistToAim) {
 					TurnRight();
 					minDistToAim = right.distance(aimCell);
 				}
-				if (board.getCellState(left) != -1 && 
-						left.distance(aimCell) < minDistToAim){
+				if (board.getCellState(left) != -1
+						&& left.distance(aimCell) < minDistToAim) {
 					TurnLeft();
 					minDistToAim = left.distance(aimCell);
-				}	
-				
+				}
+
 				super.move();
-				
+
 				if (board.getCellState(DesiredCell()) != -1
-						&& (Math.abs(dist)<1.1*TimerPeriod / speed)){
+						&& (Math.abs(dist) < 1.1 * TimerPeriod / speed)) {
 					direction = desiredDirection;
 				}
 			}
-			
-			private void TurnRight(){
+
+			private void TurnRight() {
 				switch (direction) {
 				case 1:
 					desiredDirection = 2;
@@ -826,8 +887,8 @@ public class Server {
 					break;
 				}
 			}
-			
-			private void TurnLeft(){
+
+			private void TurnLeft() {
 				switch (direction) {
 				case 1:
 					desiredDirection = -2;
@@ -846,8 +907,7 @@ public class Server {
 					break;
 				}
 			}
-				
-			
+
 			private Point RightCell() {
 				Point result = (Point) cell.clone();
 
@@ -870,7 +930,7 @@ public class Server {
 				}
 				return result;
 			}
-			
+
 			private Point LeftCell() {
 				Point result = (Point) cell.clone();
 
@@ -894,7 +954,7 @@ public class Server {
 
 				return result;
 			}
-			
+
 		}
 
 	}
