@@ -29,6 +29,7 @@ import java.io.OutputStream;
 import java.net.InetAddress;
 import java.net.ServerSocket;
 import java.net.Socket;
+import java.net.SocketException;
 import java.util.Timer;
 import java.util.TimerTask;
 import java.util.Vector;
@@ -58,6 +59,7 @@ public class App {
 	protected JList list;
 	private JButton btnNewRoom;
 	private JButton btnEnter;
+	private JButton btnSpectate;
 	private JButton btnLeaveRoom;
 	private JButton btnRefresh;
 	private DrawingArea drawingArea;
@@ -117,10 +119,10 @@ public class App {
 		}
 
 		public void PaintBoard() {
-			image = new BufferedImage(board[0].length * cellSize, board.length * cellSize,
-					BufferedImage.TYPE_INT_ARGB);
-			imgBoard = new BufferedImage(board[0].length * cellSize, board.length * cellSize,
-					BufferedImage.TYPE_INT_ARGB);
+			image = new BufferedImage(board[0].length * cellSize, board.length
+					* cellSize, BufferedImage.TYPE_INT_ARGB);
+			imgBoard = new BufferedImage(board[0].length * cellSize,
+					board.length * cellSize, BufferedImage.TYPE_INT_ARGB);
 			g2dBoard = (Graphics2D) imgBoard.getGraphics();
 			g2dImage = (Graphics2D) image.getGraphics();
 			for (int row = 0; row < board.length; row++) {
@@ -130,7 +132,8 @@ public class App {
 					} else {
 						g2dBoard.setColor(Color.white);
 					}
-					g2dBoard.fillRect(col * cellSize, row * cellSize, cellSize, cellSize);
+					g2dBoard.fillRect(col * cellSize, row * cellSize, cellSize,
+							cellSize);
 				}
 			}
 			imgBoard.copyData(image.getRaster());
@@ -170,36 +173,29 @@ public class App {
 
 		GameWindowInit();
 
-		painter = new java.util.Timer();
-
 	}
-
-	TimerTask paint = new TimerTask() {
-		public void run() {
-			drawingArea.PaintState();
-		}
-	};
 
 	private void GameWindowInit() {
 		gameWindow = new JFrame();
-		gameWindow.setResizable(false);		
-		gameWindow.setBounds(100, 100, DrawingArea.cellSize*28+6, DrawingArea.cellSize*31+50);
+		gameWindow.setResizable(false);
+		gameWindow.setBounds(100, 100, DrawingArea.cellSize * 28 + 6,
+				DrawingArea.cellSize * 31 + 50);
 		gameWindow.setDefaultCloseOperation(JFrame.DO_NOTHING_ON_CLOSE);
 		gameWindow.addKeyListener(new KeyAdapter() {
-		     
-		    public void keyPressed(KeyEvent e) {
-		         String key = KeyEvent.getKeyText(e.getKeyCode());
-		         try {
+
+			public void keyPressed(KeyEvent e) {
+				String key = KeyEvent.getKeyText(e.getKeyCode());
+				try {
 					dout.writeUTF(key);
 				} catch (IOException e1) {
 				}
-		         System.out.println(key);
-		    }
-		             
+				System.out.println(key);
+			}
+
 		});
 		gameWindow.getContentPane().setLayout(new BorderLayout(0, 0));
 
-		drawingArea = new DrawingArea();		
+		drawingArea = new DrawingArea();
 		gameWindow.getContentPane().add(drawingArea, BorderLayout.CENTER);
 
 		JMenuBar menuBar = new JMenuBar();
@@ -266,8 +262,10 @@ public class App {
 	private void LeaveRoom() {
 		myRoom = "";
 		Send("LeaveRoom");
+		if (painter != null) painter.cancel();
 		RefreshRoomList();
 		btnEnter.setEnabled(true);
+		btnSpectate.setEnabled(true);
 		btnNewRoom.setEnabled(true);
 		btnLeaveRoom.setEnabled(false);
 	}
@@ -276,6 +274,7 @@ public class App {
 		myRoom = name;
 		RefreshRoomList();
 		btnEnter.setEnabled(false);
+		btnSpectate.setEnabled(false);
 		btnNewRoom.setEnabled(false);
 		btnLeaveRoom.setEnabled(true);
 	}
@@ -284,7 +283,7 @@ public class App {
 	private void MainWindowInit() {
 		mainWindow = new JFrame("Games list");
 		mainWindow.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
-		mainWindow.setBounds(100, 100, 460, 352);
+		mainWindow.setBounds(100, 100, 560, 352);
 
 		JMenuBar menuBar = new JMenuBar();
 		mainWindow.setJMenuBar(menuBar);
@@ -327,7 +326,7 @@ public class App {
 					roomName = JOptionPane
 							.showInputDialog(
 									"Print number of players and name of new room (¹:name)",
-									"New room");
+									"1:New room");
 					if (roomName != null)
 						try {
 							if (roomList != null)
@@ -373,6 +372,25 @@ public class App {
 		});
 		btnEnter.setAlignmentY(Component.TOP_ALIGNMENT);
 		panel_1.add(btnEnter);
+
+		btnSpectate = new JButton("Spectate");
+		btnSpectate.setEnabled(false);
+		btnSpectate.addActionListener(new ActionListener() {
+			public void actionPerformed(ActionEvent arg0) {
+				int idx = list.getSelectedIndex();
+				if (idx >= 0) {
+					String name = roomList[idx].substring(0,
+							roomList[idx].length() - 6);
+					Send("SpectateRoom:" + name);
+					String answer = recv();
+					if (answer.equals("success")) {
+						GetRoom(name);
+					}
+				}
+			}
+		});
+		btnSpectate.setAlignmentY(Component.TOP_ALIGNMENT);
+		panel_1.add(btnSpectate);
 
 		btnLeaveRoom = new JButton("Leave room");
 		btnLeaveRoom.setEnabled(false);
@@ -434,6 +452,7 @@ public class App {
 							mntmConnectTo.setEnabled(false);
 
 							btnEnter.setEnabled(true);
+							btnSpectate.setEnabled(true);
 							btnNewRoom.setEnabled(true);
 							btnRefresh.setEnabled(true);
 
@@ -470,22 +489,7 @@ public class App {
 		mntmDisconnect = new JMenuItem("Disconnect");
 		mntmDisconnect.addActionListener(new ActionListener() {
 			public void actionPerformed(ActionEvent arg0) {
-				try {
-					if (!socket.isClosed())
-						socket.close();
-					if (!dataSocket.isClosed())
-						dataSocket.close();
-					if (!ss.isClosed())
-						ss.close();
-					mntmDisconnect.setEnabled(false);
-					mntmConnectTo.setEnabled(true);
-					myRoom = "";
-					btnEnter.setEnabled(false);
-					btnLeaveRoom.setEnabled(false);
-					btnNewRoom.setEnabled(false);
-					btnRefresh.setEnabled(false);
-				} catch (IOException e) {
-				}
+				Disconnect();
 			}
 		});
 		mntmDisconnect.setEnabled(false);
@@ -493,6 +497,26 @@ public class App {
 		mnFile.add(mntmExit);
 	}
 
+	private void Disconnect() {
+		try {
+			if (!socket.isClosed())
+				socket.close();
+			if (!dataSocket.isClosed())
+				dataSocket.close();
+			if (!ss.isClosed())
+				ss.close();
+			mntmDisconnect.setEnabled(false);
+			mntmConnectTo.setEnabled(true);
+			myRoom = "";
+			btnEnter.setEnabled(false);
+			btnSpectate.setEnabled(false);
+			btnLeaveRoom.setEnabled(false);
+			btnNewRoom.setEnabled(false);
+			btnRefresh.setEnabled(false);
+		} catch (IOException e) {
+		}
+	}
+	
 	private class SocketReader implements Runnable {
 
 		@SuppressWarnings("unchecked")
@@ -501,7 +525,7 @@ public class App {
 			while (!dataSocket.isClosed()) {
 				try {
 					String line = "";
-					dataSocket.setSoTimeout(0);
+					dataSocket.setSoTimeout(1000);
 
 					do
 						line = din.readUTF();
@@ -517,17 +541,21 @@ public class App {
 
 				} catch (Exception e) {
 					gameState = null;
+					if (!e.getMessage().equals("Read timed out")) Disconnect();
 				}
 
 			}
-
 		}
 	}
-
 
 	public void StartGame() {
 		mainWindow.setVisible(false);
 		gameWindow.setVisible(true);
-		painter.schedule(paint, 0, 50);
+		painter = new java.util.Timer();
+		painter.schedule(new TimerTask() {
+			public void run() {
+				drawingArea.PaintState();
+			}
+		}, 0, 50);
 	}
 }
