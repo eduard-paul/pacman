@@ -5,6 +5,7 @@ import java.io.DataInputStream;
 import java.io.DataOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.ObjectInputStream;
 import java.io.ObjectOutputStream;
 import java.io.OutputStream;
 import java.net.ServerSocket;
@@ -20,10 +21,9 @@ import myLib.*;
 
 public class Server {
 
-	private ServerSocket ss; // сам сервер-сокет
-	private Thread serverThread; // главная нить обработки сервер-сокета
-	private int port; // порт сервер сокета.
-	// очередь, где храняться все SocketProcessorы для рассылки
+	private ServerSocket ss;
+	private Thread serverThread;
+	private int port;
 	BlockingQueue<User> allUsers = new LinkedBlockingQueue<User>();
 	BlockingQueue<Room> rooms = new LinkedBlockingQueue<Room>();
 
@@ -33,8 +33,8 @@ public class Server {
 
 	public Server(int port) throws IOException {
 
-		ss = new ServerSocket(port); // создаем сервер-сокет
-		this.port = port; // сохраняем порт.
+		ss = new ServerSocket(port);
+		this.port = port;
 
 		initialize();
 
@@ -45,62 +45,36 @@ public class Server {
 	}
 
 	void run() {
-		serverThread = Thread.currentThread(); // со старта сохраняем нить
-												// (чтобы можно ее было
-												// interrupt())
+		serverThread = Thread.currentThread();
 		while (true) {
-			Socket s = getNewConn(); // получить новое соединение или
-										// фейк-соедиение
-			if (serverThread.isInterrupted()) { // если это фейк-соединение, то
-												// наша нить была interrupted(),
-				// надо прерваться
+			Socket s = getNewConn();
+			if (serverThread.isInterrupted()) {
 				break;
-			} else if (s != null) { // "только если коннект успешно создан"...
+			} else if (s != null) {
 				try {
-					final User processor = new User(s); // создаем
-														// сокет-процессор
-					final Thread thread = new Thread(processor); // создаем
-																	// отдельную
-																	// асинхронную
-																	// нить
-																	// чтения
-																	// из сокета
-					thread.setDaemon(true); // ставим ее в демона (чтобы не
-											// ожидать ее закрытия)
-					thread.start(); // запускаем
-					allUsers.offer(processor); // добавляем в список активных
-					// сокет-процессоров
+					final User processor = new User(s);
+					final Thread thread = new Thread(processor);
+					thread.setDaemon(true);
+					thread.start();
+					allUsers.offer(processor);
 					System.out.println(s.toString() + " connected");
-				} // тут прикол в замысле. Если попытка создать (new
-					// SocketProcessor()) безуспешна,
-					// то остальные строки обойдем, нить запускать не будем, в
-					// список не сохраним
-				catch (IOException ignored) {
-				} // само же исключение создания коннекта нам не интересно.
+				} catch (IOException ignored) {
+				}
 			}
 		}
 	}
 
-	/**
-	 * Ожидает новое подключение.
-	 * 
-	 * @return Сокет нового подключения
-	 */
 	private Socket getNewConn() {
 		Socket s = null;
 		try {
 			s = ss.accept();
 		} catch (IOException e) {
-			shutdownServer(); // если ошибка в момент приема - "гасим" сервер
+			shutdownServer();
 		}
 		return s;
 	}
 
-	/**
-	 * метод "глушения" сервера
-	 */
 	private synchronized void shutdownServer() {
-		// обрабатываем список рабочих коннектов, закрываем каждый
 		for (User s : allUsers) {
 			s.close();
 		}
@@ -120,6 +94,7 @@ public class Server {
 		private InputStream sin;
 		private OutputStream sout;
 		ObjectOutputStream dObjOut;
+		ObjectInputStream oin;
 		DataOutputStream dOut;
 		DataInputStream din;
 		String myRoomName = "";
@@ -134,6 +109,7 @@ public class Server {
 			dObjOut = new ObjectOutputStream(ds.getOutputStream());
 			dOut = new DataOutputStream(ds.getOutputStream());
 			din = new DataInputStream(ds.getInputStream());
+			oin = new ObjectInputStream(s.getInputStream());
 			Thread secondReader = new Thread(new Runnable() {
 				@Override
 				public void run() {
@@ -164,7 +140,7 @@ public class Server {
 		public void run() {
 
 			while (!s.isClosed()) {
-				// пока сокет не закрыт...
+
 				String line = null;
 
 				DataInputStream in = new DataInputStream(sin);
@@ -175,31 +151,27 @@ public class Server {
 							.println("The dumb client just sent me this line : "
 									+ line);
 				} catch (IOException e) {
-					close(); // если не получилось - закрываем сокет.
+					close();
 				}
 
-				if (line == null) { // если клиент отключился в штатном
-									// режиме.
-					close(); // то закрываем сокет
-				} else if ("shutdown".equals(line)) { // если поступила команда
-														// "погасить сервер",
-														// то...
-					serverThread.interrupt(); // сначала возводим флаг у
-												// северной нити о необходимости
-												// прерваться.
+				if (line == null) {
+					close();
+				} else if ("shutdown".equals(line)) {
+					serverThread.interrupt();
 					try {
-						new Socket("localhost", port); // создаем фейк-коннект
-														// (чтобы выйти из
-														// .accept())
-					} catch (IOException ignored) { // ошибки неинтересны
+						new Socket("localhost", port); // create fake connection
+														// (to leave
+														// ".accept()")
+					} catch (IOException ignored) {
 					} finally {
-						shutdownServer(); // а затем глушим сервер вызовом его
-											// метода shutdownServer().
+						shutdownServer();
 					}
 				} else if ("RefreshRoomList".equals(line)) {
 					SendRoomList();
 				} else if (line.contains("CreateRoom:")) {
 					CreateRoom(line);
+				} else if (line.contains("CustomRoom:")) {
+					CustomRoom(line);
 				} else if (line.contains("EnterRoom:")) {
 					EnterRoom(line);
 				} else if (line.contains("LeaveRoom")) {
@@ -227,6 +199,38 @@ public class Server {
 			myRoomName = "";
 			myRoom = null;
 			playerId = -1;
+		}
+
+		public synchronized void CustomRoom(String line) {
+			DataOutputStream out = new DataOutputStream(sout);
+			boolean failed = false;
+			String name = line.substring(11);
+			for (Room room : rooms) { // Check if the same already exists
+				if (room.name.equals(name))
+					failed = true;
+			}
+			if (!failed) {
+				try {					
+					CustomBoard cb = (CustomBoard) oin.readObject();
+					myRoom = new Room(name, cb, this);
+					rooms.offer(myRoom);
+					myRoomName = name;
+					out.writeUTF("success");
+					out.flush();
+				} catch (Exception e) {
+					try {
+						out.writeUTF("fail");
+						out.flush();
+					} catch (IOException e1) {
+					}
+				}
+			} else {
+				try {
+					out.writeUTF("fail");
+					out.flush();
+				} catch (IOException e) {
+				}
+			}
 		}
 
 		public synchronized void CreateRoom(String line) {
@@ -427,6 +431,19 @@ public class Server {
 				StartGame();
 		}
 
+		public Room(String name, CustomBoard cb, User firstPlayer) {
+
+			this.name = name;
+			this.maxPlayers = cb.playersStartPoints.size();
+			this.currPlayers = 1;
+			players.offer(firstPlayer);
+
+			game = new Game(cb);
+
+			if (currPlayers == maxPlayers)
+				StartGame();
+		}
+
 		public void AddPlayer(User firstPlayer) {
 			if (currPlayers < maxPlayers && !isStarted) {
 				players.offer(firstPlayer);
@@ -573,6 +590,8 @@ public class Server {
 				new Point(1, 26), new Point(29, 26), new Point(29, 1) };
 		private final Point[] defaultGhostsStartPoints = { new Point(13, 11),
 				new Point(15, 11), new Point(13, 16), new Point(15, 16) };
+		private final Point[] playersStartPoints;
+		private final Point[] ghostsStartPoints; 
 		private final int DefaultSpeed = 300;
 		private final int TimerPeriod = 30;
 
@@ -633,19 +652,44 @@ public class Server {
 		}
 
 		public Game(int playersNum) {
-
+			
+			this.playersStartPoints = defaultPlayersStartPoints;
+			this.ghostsStartPoints = defaultGhostsStartPoints;
 			this.playersNum = playersNum;
-			board = new DefaultBoard();
+			board = new Board();
 			for (int[] row : board.board) {
 				for (int i : row) {
-					if (i == 0){
+					if (i == 0) {
 						totalFood++;
 					}
 				}
 			}
 			for (int i = 0; i < board.board.length; i++) {
 				for (int j = 0; j < board.board[0].length; j++) {
-					if (board.board[i][j] == 0){
+					if (board.board[i][j] == 0) {
+						totalFood++;
+						board.board[i][j] = 5;
+					}
+				}
+			}
+		}
+
+		public Game(CustomBoard cb) {
+			// TODO Auto-generated constructor stub
+			this.playersNum = cb.playersStartPoints.size();
+			this.playersStartPoints = cb.playersStartPoints.toArray(new Point[0]);
+			this.ghostsStartPoints = cb.ghostsStartPoints.toArray(new Point[0]);
+			board = new Board(cb);
+			for (int[] row : board.board) {
+				for (int i : row) {
+					if (i != -1) {
+						totalFood++;
+					}
+				}
+			}
+			for (int i = 0; i < board.board.length; i++) {
+				for (int j = 0; j < board.board[0].length; j++) {
+					if (board.board[i][j] != -1) {
 						totalFood++;
 						board.board[i][j] = 5;
 					}
@@ -659,19 +703,19 @@ public class Server {
 				int direction = 1;
 				if (i % 2 == 1)
 					direction = -1;
-				characters.add(new Player(defaultPlayersStartPoints[i],
+				characters.add(new Player(playersStartPoints[i],
 						direction, DefaultSpeed, i + 1));
-				board.setCellState(defaultPlayersStartPoints[i], 1);
+				board.setCellState(playersStartPoints[i], 1);
 			}
 
 			for (int i = 0; i < ghostsNum; i++) {
 				int direction = 1;
 				if (i % 2 == 1)
 					direction = -1;
-				characters.add(new Ghost(defaultGhostsStartPoints[i],
+				characters.add(new Ghost(ghostsStartPoints[i],
 						direction, DefaultSpeed, -1 - i, characters.get(i
 								% playersNum)));
-				board.setCellState(defaultGhostsStartPoints[i], -2);
+				board.setCellState(ghostsStartPoints[i], -2);
 			}
 			timer.schedule(task, 0, TimerPeriod);
 		}
@@ -683,7 +727,7 @@ public class Server {
 				if (i % 2 == 1)
 					direction = -1;
 				Character player = characters.get(i);
-				player.Setter(defaultPlayersStartPoints[i], direction,
+				player.Setter(playersStartPoints[i], direction,
 						DefaultSpeed);
 			}
 			for (int i = playersNum; i < playersNum + ghostsNum; i++) {
@@ -691,7 +735,7 @@ public class Server {
 				if (i % 2 == 1)
 					direction = -1;
 				Character ghost = characters.get(i);
-				ghost.Setter(defaultGhostsStartPoints[i - playersNum],
+				ghost.Setter(ghostsStartPoints[i - playersNum],
 						direction, DefaultSpeed);
 			}
 			catchedPlayers = 0;
@@ -703,11 +747,36 @@ public class Server {
 			protected int board[][];
 			protected int cleanBoard[][];
 
+			public Board(CustomBoard cb) {
+				board = new int[cb.board.length][cb.board[0].length];
+				cleanBoard = new int[cb.board.length][cb.board[0].length];
+				for (int i = 0; i < board.length; i++) {
+					for (int j = 0; j < board[0].length; j++) {
+						board[i][j] = cb.board[i][j];
+						cleanBoard[i][j] = cb.board[i][j];
+					}
+				}
+			}
+			/**
+			 * Creates the default board
+			 */
+			public Board() {
+				board = new int[defaultBoard.length][defaultBoard[0].length];
+				cleanBoard = new int[defaultBoard.length][defaultBoard[0].length];
+				for (int i = 0; i < board.length; i++) {
+					for (int j = 0; j < board[0].length; j++) {
+						board[i][j] = defaultBoard[i][j];
+						cleanBoard[i][j] = defaultBoard[i][j];
+					}
+				}
+			}
+			
 			public void Clean() {
 				for (int i = 0; i < board.length; i++) {
 					for (int j = 0; j < board[0].length; j++) {
 						board[i][j] = cleanBoard[i][j];
-						if (board[i][j] == 0) board[i][j] = 5;
+						if (board[i][j] == 0)
+							board[i][j] = 5;
 					}
 				}
 			}
@@ -725,19 +794,6 @@ public class Server {
 			 */
 			public int getCellState(Point cell) {
 				return board[cell.x][cell.y];
-			}
-		}
-
-		private class DefaultBoard extends Board {
-			public DefaultBoard() {
-				board = new int[defaultBoard.length][defaultBoard[0].length];
-				cleanBoard = new int[defaultBoard.length][defaultBoard[0].length];
-				for (int i = 0; i < board.length; i++) {
-					for (int j = 0; j < board[0].length; j++) {
-						board[i][j] = defaultBoard[i][j];
-						cleanBoard[i][j] = defaultBoard[i][j];
-					}
-				}
 			}
 		}
 
@@ -771,9 +827,9 @@ public class Server {
 
 			/**
 			 * @param direction
-			 *            "1" - rigth, "-1" - left, "2" - down, "-2" - up
+			 *            "1" - right, "-1" - left, "2" - down, "-2" - up
 			 * @param speed
-			 *            Time in ms needed to reach next cell
+			 *            Time in Ms needed to reach next cell
 			 */
 			public Character(Point cell, int direction, int speed, int id) {
 				this.cell = (Point) cell.clone();
@@ -857,7 +913,7 @@ public class Server {
 		private class Player extends Character {
 			/**
 			 * @param direction
-			 *            "1" - rigth, "-1" - left, "2" - down, "-2" - up
+			 *            "1" - right, "-1" - left, "2" - down, "-2" - up
 			 * @param speed
 			 *            Time in ms needed to reach next cell
 			 */
@@ -871,7 +927,7 @@ public class Server {
 				super.Setter(cell, direction, speed);
 				this.myFood = 0;
 			}
-			
+
 			@Override
 			public void move() {
 				if (Math.abs(desiredDirection) == Math.abs(direction))
@@ -923,7 +979,7 @@ public class Server {
 
 			/**
 			 * @param direction
-			 *            "1" - rigth, "-1" - left, "2" - down, "-2" - up
+			 *            "1" - right, "-1" - left, "2" - down, "-2" - up
 			 * @param speed
 			 *            Time in ms needed to reach next cell
 			 */

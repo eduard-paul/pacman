@@ -13,12 +13,15 @@ import java.awt.image.BufferedImage;
 import javax.swing.*;
 
 import myLib.CharacterState;
+import myLib.CustomBoard;
 import myLib.GameState;
 
 import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
 import java.awt.event.KeyAdapter;
 import java.awt.event.KeyEvent;
+import java.awt.event.MouseAdapter;
+import java.awt.event.MouseEvent;
 import java.awt.event.WindowAdapter;
 import java.awt.event.WindowEvent;
 import java.io.DataInputStream;
@@ -26,14 +29,16 @@ import java.io.DataOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.ObjectInputStream;
+import java.io.ObjectOutputStream;
 import java.io.OutputStream;
 import java.net.InetAddress;
 import java.net.ServerSocket;
 import java.net.Socket;
-import java.net.SocketException;
 import java.util.Timer;
 import java.util.TimerTask;
 import java.util.Vector;
+import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.LinkedBlockingQueue;
 
 public class App {
 
@@ -43,6 +48,7 @@ public class App {
 	DataInputStream in;
 	DataOutputStream out, dout;
 	ObjectInputStream doin;
+	ObjectOutputStream oout;
 	DataInputStream din;
 	String[] roomList;
 	String myRoom = "";
@@ -50,20 +56,86 @@ public class App {
 	SocketReader processor;
 	Thread thread;
 	Timer painter;
+	CustomBoard customBoard;
+	private final int[][] defaultBoard = {
+			{ -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+					-1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1 },
+			{ -1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, -1, -1, 0, 0, 0, 0, 0, 0,
+					0, 0, 0, 0, 0, 0, -1 },
+			{ -1, 0, -1, -1, -1, -1, 0, -1, -1, -1, -1, -1, 0, -1, -1, 0, -1,
+					-1, -1, -1, -1, 0, -1, -1, -1, -1, 0, -1 },
+			{ -1, 0, -1, -1, -1, -1, 0, -1, -1, -1, -1, -1, 0, -1, -1, 0, -1,
+					-1, -1, -1, -1, 0, -1, -1, -1, -1, 0, -1 },
+			{ -1, 0, -1, -1, -1, -1, 0, -1, -1, -1, -1, -1, 0, -1, -1, 0, -1,
+					-1, -1, -1, -1, 0, -1, -1, -1, -1, 0, -1 },
+			{ -1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+					0, 0, 0, 0, 0, 0, -1 },
+			{ -1, 0, -1, -1, -1, -1, 0, -1, -1, 0, -1, -1, -1, -1, -1, -1, -1,
+					-1, 0, -1, -1, 0, -1, -1, -1, -1, 0, -1 },
+			{ -1, 0, -1, -1, -1, -1, 0, -1, -1, 0, -1, -1, -1, -1, -1, -1, -1,
+					-1, 0, -1, -1, 0, -1, -1, -1, -1, 0, -1 },
+			{ -1, 0, 0, 0, 0, 0, 0, -1, -1, 0, 0, 0, 0, -1, -1, 0, 0, 0, 0, -1,
+					-1, 0, 0, 0, 0, 0, 0, -1 },
+			{ -1, -1, -1, -1, -1, -1, 0, -1, -1, -1, -1, -1, 0, -1, -1, 0, -1,
+					-1, -1, -1, -1, 0, -1, -1, -1, -1, -1, -1 },
+			{ -1, -1, -1, -1, -1, -1, 0, -1, -1, -1, -1, -1, 0, -1, -1, 0, -1,
+					-1, -1, -1, -1, 0, -1, -1, -1, -1, -1, -1 },
+			{ -1, -1, -1, -1, -1, -1, 0, -1, -1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+					-1, -1, 0, -1, -1, -1, -1, -1, -1 },
+			{ -1, -1, -1, -1, -1, -1, 0, -1, -1, 0, -1, -1, -1, 0, 0, -1, -1,
+					-1, 0, -1, -1, 0, -1, -1, -1, -1, -1, -1 },
+			{ -1, -1, -1, -1, -1, -1, 0, -1, -1, 0, -1, 0, 0, 0, 0, 0, 0, -1,
+					0, -1, -1, 0, -1, -1, -1, -1, -1, -1 },
+			{ 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, -1, 0, -1, -1, -1, -1, 0, -1, 0, 0,
+					0, 0, 0, 0, 0, 0, 0, 0 },
+			{ -1, -1, -1, -1, -1, -1, 0, -1, -1, 0, -1, 0, 0, 0, 0, 0, 0, -1,
+					0, -1, -1, 0, -1, -1, -1, -1, -1, -1 },
+			{ -1, -1, -1, -1, -1, -1, 0, -1, -1, 0, -1, -1, -1, 0, 0, -1, -1,
+					-1, 0, -1, -1, 0, -1, -1, -1, -1, -1, -1 },
+			{ -1, -1, -1, -1, -1, -1, 0, -1, -1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+					-1, -1, 0, -1, -1, -1, -1, -1, -1 },
+			{ -1, -1, -1, -1, -1, -1, 0, -1, -1, 0, -1, -1, -1, -1, -1, -1, -1,
+					-1, 0, -1, -1, 0, -1, -1, -1, -1, -1, -1 },
+			{ -1, -1, -1, -1, -1, -1, 0, -1, -1, 0, -1, -1, -1, -1, -1, -1, -1,
+					-1, 0, -1, -1, 0, -1, -1, -1, -1, -1, -1 },
+			{ -1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, -1, -1, 0, 0, 0, 0, 0, 0,
+					0, 0, 0, 0, 0, 0, -1 },
+			{ -1, 0, -1, -1, -1, -1, 0, -1, -1, -1, -1, -1, 0, -1, -1, 0, -1,
+					-1, -1, -1, -1, 0, -1, -1, -1, -1, 0, -1 },
+			{ -1, 0, -1, -1, -1, -1, 0, -1, -1, -1, -1, -1, 0, -1, -1, 0, -1,
+					-1, -1, -1, -1, 0, -1, -1, -1, -1, 0, -1 },
+			{ -1, 0, 0, 0, -1, -1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+					0, -1, -1, 0, 0, 0, -1 },
+			{ -1, -1, -1, 0, -1, -1, 0, -1, -1, 0, -1, -1, -1, -1, -1, -1, -1,
+					-1, 0, -1, -1, 0, -1, -1, 0, -1, -1, -1 },
+			{ -1, -1, -1, 0, -1, -1, 0, -1, -1, 0, -1, -1, -1, -1, -1, -1, -1,
+					-1, 0, -1, -1, 0, -1, -1, 0, -1, -1, -1 },
+			{ -1, 0, 0, 0, 0, 0, 0, -1, -1, 0, 0, 0, 0, -1, -1, 0, 0, 0, 0, -1,
+					-1, 0, 0, 0, 0, 0, 0, -1 },
+			{ -1, 0, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, 0, -1, -1, 0, -1,
+					-1, -1, -1, -1, -1, -1, -1, -1, -1, 0, -1 },
+			{ -1, 0, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, 0, -1, -1, 0, -1,
+					-1, -1, -1, -1, -1, -1, -1, -1, -1, 0, -1 },
+			{ -1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+					0, 0, 0, 0, 0, 0, -1 },
+			{ -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+					-1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1 } };
 
 	private JFrame gameWindow;
 	private JFrame mainWindow;
+	private JFrame creator;
 	protected JMenuItem mntmDisconnect;
 	protected JMenuItem mntmConnectTo;
 	@SuppressWarnings("rawtypes")
 	protected JList list;
 	private JButton btnNewRoom;
+	private JButton btnCustomRoom;
 	private JButton btnEnter;
 	private JButton btnSpectate;
 	private JButton btnLeaveRoom;
 	private JButton btnRefresh;
 	private DrawingArea drawingArea;
-	public int[][] board;
+	private int[][] board;
 
 	class DrawingArea extends JPanel {
 
@@ -87,10 +159,10 @@ public class App {
 		}
 
 		public void PaintState() {
-			
-			if (gameState != null){
+
+			if (gameState != null) {
 				board = gameState.board;
-				PaintBoard();
+				PaintBoard(false);
 				imgBoard.copyData(image.getRaster());
 				for (CharacterState ch : gameState.cs) {
 					g2dImage.setColor(Color.DARK_GRAY);
@@ -122,7 +194,20 @@ public class App {
 			repaint();
 		}
 
-		public void PaintBoard() {
+		/**
+		 * 
+		 * @param createMode
+		 *            If true then draw players/ghosts positions
+		 */
+		public void PaintBoard(boolean createMode) {
+			if (board == null){
+				board = new int[defaultBoard.length][defaultBoard[0].length];
+				for (int i = 0; i < board.length; i++) {
+					for (int j = 0; j < board[0].length; j++) {
+						board[i][j] = defaultBoard[i][j];
+					}
+				}
+			}
 			image = new BufferedImage(board[0].length * cellSize, board.length
 					* cellSize, BufferedImage.TYPE_INT_ARGB);
 			imgBoard = new BufferedImage(board[0].length * cellSize,
@@ -131,14 +216,32 @@ public class App {
 			g2dImage = (Graphics2D) image.getGraphics();
 			for (int row = 0; row < board.length; row++) {
 				for (int col = 0; col < board[0].length; col++) {
-					if (board[row][col] == -1) {
+					switch (board[row][col]) {
+					case -1:
 						g2dBoard.setColor(Color.lightGray);
-					} else if (board[row][col] == 5) {
-						g2dBoard.setColor(Color.cyan);
-					}
-					else {
+						break;
+					case -2:
+						if (createMode) {
+							g2dBoard.setColor(Color.darkGray);
+							break;
+						}
 						g2dBoard.setColor(Color.white);
+						break;
+					case 1:
+						if (createMode) {
+							g2dBoard.setColor(Color.red);
+							break;
+						}
+						g2dBoard.setColor(Color.white);
+						break;
+					case 5:
+						g2dBoard.setColor(Color.cyan);
+						break;
+					default:
+						g2dBoard.setColor(Color.white);
+						break;
 					}
+
 					g2dBoard.fillRect(col * cellSize, row * cellSize, cellSize,
 							cellSize);
 				}
@@ -227,65 +330,6 @@ public class App {
 		});
 	}
 
-	private void Send(String str) {
-		try {
-			out.writeUTF(str);
-		} catch (IOException e) {
-		}
-	}
-
-	private String recv() {
-		String result = "";
-		try {
-			result = in.readUTF();
-		} catch (IOException e) {
-		}
-		return result;
-	}
-
-	@SuppressWarnings({ "rawtypes", "unchecked" })
-	private void RefreshRoomList() {
-		try {
-			out.writeUTF("RefreshRoomList");
-			String line = recv();
-			DefaultListModel model = new DefaultListModel();
-			if (!line.equals("empty")) {
-				roomList = line.split(":");
-				for (String string : roomList) {
-					if (string.substring(0, string.length() - 6).equals(myRoom))
-						string = ">>" + string + "<<";
-					model.addElement(string);
-				}
-				list.setModel(model);
-			} else {
-				roomList = null;
-				list.setModel(model);
-
-			}
-		} catch (IOException e) {
-		}
-	}
-
-	private void LeaveRoom() {
-		myRoom = "";
-		Send("LeaveRoom");
-		if (painter != null) painter.cancel();
-		RefreshRoomList();
-		btnEnter.setEnabled(true);
-		btnSpectate.setEnabled(true);
-		btnNewRoom.setEnabled(true);
-		btnLeaveRoom.setEnabled(false);
-	}
-
-	private void GetRoom(String name) {
-		myRoom = name;
-		RefreshRoomList();
-		btnEnter.setEnabled(false);
-		btnSpectate.setEnabled(false);
-		btnNewRoom.setEnabled(false);
-		btnLeaveRoom.setEnabled(true);
-	}
-
 	@SuppressWarnings({ "unchecked", "rawtypes", "serial" })
 	private void MainWindowInit() {
 		mainWindow = new JFrame("Games list");
@@ -360,6 +404,46 @@ public class App {
 			}
 		});
 		panel_1.add(btnNewRoom);
+
+		btnCustomRoom = new JButton("Custom room");
+		btnCustomRoom.setEnabled(false);
+		btnCustomRoom.addActionListener(new ActionListener() {
+			public void actionPerformed(ActionEvent arg0) {
+				boolean failed;
+				String roomName;
+				do {
+					failed = false;
+					roomName = JOptionPane.showInputDialog(
+							"Print name of new room", "New room");
+					if (roomName != null)
+						try {
+							if (roomList != null)
+								for (String str : roomList) {
+									String strName = str.substring(0,
+											str.length() - 6);
+									if (roomName.equals(strName)) {
+										failed = true;
+									}
+								}
+						} catch (Exception e) {
+							failed = true;
+						}
+				} while (failed);
+				if (roomName != null) {
+
+					CreatorWindowInit(roomName);
+
+					// Send("CreateRoom:" + roomName);
+					// String answer = recv();
+					// RefreshRoomList();
+					// if (answer.equals("success")) {
+					// GetRoom(roomName.substring(2));
+					// }
+
+				}
+			}
+		});
+		panel_1.add(btnCustomRoom);
 
 		btnEnter = new JButton("Enter");
 		btnEnter.setEnabled(false);
@@ -447,6 +531,8 @@ public class App {
 									.getInputStream());
 							dout = new DataOutputStream(dataSocket
 									.getOutputStream());
+							oout = new ObjectOutputStream(socket
+									.getOutputStream());
 
 							processor = new SocketReader();
 							thread = new Thread(processor);
@@ -461,6 +547,7 @@ public class App {
 							btnEnter.setEnabled(true);
 							btnSpectate.setEnabled(true);
 							btnNewRoom.setEnabled(true);
+							btnCustomRoom.setEnabled(true);
 							btnRefresh.setEnabled(true);
 
 						} catch (Exception e) {
@@ -504,6 +591,169 @@ public class App {
 		mnFile.add(mntmExit);
 	}
 
+	private void CreatorWindowInit(final String name) {
+
+		final BlockingQueue<Point> players = new LinkedBlockingQueue<Point>();
+		final BlockingQueue<Point> ghosts = new LinkedBlockingQueue<Point>();
+		customBoard = new CustomBoard();
+
+		creator = new JFrame();
+		creator.setVisible(true);
+		// mainWindow.setVisible(false);
+		creator.setResizable(false);
+		creator.setBounds(100, 100, DrawingArea.cellSize * 28 + 6,
+				DrawingArea.cellSize * 31 + 60);
+		creator.getContentPane().setLayout(new BorderLayout(0, 0));
+
+		JPanel panel = new JPanel();
+		creator.getContentPane().add(panel, BorderLayout.SOUTH);
+		FlowLayout fl_panel_1 = new FlowLayout(FlowLayout.LEFT, 5, 5);
+		fl_panel_1.setAlignOnBaseline(true);
+		panel.setLayout(fl_panel_1);
+
+		final JButton btnDone = new JButton("Done");
+		btnDone.setEnabled(false);
+		btnDone.addActionListener(new ActionListener() {
+			public void actionPerformed(ActionEvent arg0) {
+				// TODO Send custom board
+				customBoard.board = board;
+				customBoard.playersStartPoints = players;
+				customBoard.ghostsStartPoints = ghosts;
+
+				Send("CustomRoom:" + name);
+				try {
+					oout.writeObject(customBoard);
+				} catch (IOException e) {
+				}
+				String answer = recv();
+				System.out.println(answer);
+				RefreshRoomList();
+				if (answer.equals("success")) {
+					GetRoom(name);
+					creator.dispose();
+					creator = null;
+				}
+			}
+		});
+		panel.add(btnDone);
+
+		board = null;
+		final DrawingArea drawingArea = new DrawingArea();
+		creator.getContentPane().add(drawingArea, BorderLayout.CENTER);
+		drawingArea.PaintBoard(true);
+		drawingArea.addMouseListener(new MouseAdapter() {
+			@Override
+			public void mousePressed(MouseEvent e) {
+				int x = e.getX();
+				int y = e.getY();
+				int cellRow = y / DrawingArea.cellSize;
+				int cellCol = x / DrawingArea.cellSize;
+				if (MouseEvent.BUTTON1 == e.getButton()) {
+					if (board[cellRow][cellCol] == 0
+							|| board[cellRow][cellCol] == -1)
+						board[cellRow][cellCol] = -(board[cellRow][cellCol] + 1) % 2;
+					drawingArea.PaintBoard(true);
+				} else if (MouseEvent.BUTTON3 == e.getButton()) {
+					if (players.size() < 4 && board[cellRow][cellCol] == 0) {
+						players.offer(new Point(cellRow, cellCol));
+						board[cellRow][cellCol] = 1;
+					} else if (board[cellRow][cellCol] == 1) {
+						for (Point player : players) {
+							if (player.getX() == cellRow
+									&& player.getY() == cellCol) {
+								players.remove(player);
+								board[cellRow][cellCol] = 0;
+							}
+						}
+					}
+					drawingArea.PaintBoard(true);
+				} else if (MouseEvent.BUTTON2 == e.getButton()) {
+					if (ghosts.size() < 4 && board[cellRow][cellCol] == 0) {
+						ghosts.offer(new Point(cellRow, cellCol));
+						board[cellRow][cellCol] = -2;
+					} else if (board[cellRow][cellCol] == -2) {
+						for (Point ghost : ghosts) {
+							if (ghost.getX() == cellRow
+									&& ghost.getY() == cellCol) {
+								ghosts.remove(ghost);
+								board[cellRow][cellCol] = 0;
+							}
+						}
+					}
+					drawingArea.PaintBoard(true);
+				}
+				if (ghosts.size() == 4 && players.size() > 0) {
+					btnDone.setEnabled(true);
+				} else {
+					btnDone.setEnabled(false);
+				}
+			}
+		});
+	}
+
+	private void Send(String str) {
+		try {
+			out.writeUTF(str);
+		} catch (IOException e) {
+		}
+	}
+
+	private String recv() {
+		String result = "";
+		try {
+			result = in.readUTF();
+		} catch (IOException e) {
+		}
+		return result;
+	}
+
+	@SuppressWarnings({ "rawtypes", "unchecked" })
+	private void RefreshRoomList() {
+		try {
+			out.writeUTF("RefreshRoomList");
+			String line = recv();
+			DefaultListModel model = new DefaultListModel();
+			if (!line.equals("empty")) {
+				roomList = line.split(":");
+				for (String string : roomList) {
+					if (string.substring(0, string.length() - 6).equals(myRoom))
+						string = ">>" + string + "<<";
+					model.addElement(string);
+				}
+				list.setModel(model);
+			} else {
+				roomList = null;
+				list.setModel(model);
+
+			}
+		} catch (IOException e) {
+		}
+	}
+
+	private void LeaveRoom() {
+		myRoom = "";
+		board = null;
+		Send("LeaveRoom");
+		if (painter != null)
+			painter.cancel();
+		RefreshRoomList();
+		btnEnter.setEnabled(true);
+		btnSpectate.setEnabled(true);
+		btnNewRoom.setEnabled(true);
+		btnCustomRoom.setEnabled(true);
+		btnLeaveRoom.setEnabled(false);
+	}
+
+	private void GetRoom(String name) {
+		myRoom = name;
+		RefreshRoomList();
+		btnEnter.setEnabled(false);
+		btnSpectate.setEnabled(false);
+		btnNewRoom.setEnabled(false);
+		btnCustomRoom.setEnabled(false);
+		btnLeaveRoom.setEnabled(true);
+	}
+
 	private void Disconnect() {
 		try {
 			if (!socket.isClosed())
@@ -519,14 +769,14 @@ public class App {
 			btnSpectate.setEnabled(false);
 			btnLeaveRoom.setEnabled(false);
 			btnNewRoom.setEnabled(false);
+			btnCustomRoom.setEnabled(false);
 			btnRefresh.setEnabled(false);
 		} catch (IOException e) {
 		}
 	}
-	
+
 	private class SocketReader implements Runnable {
 
-		@SuppressWarnings("unchecked")
 		public void run() {
 
 			while (!dataSocket.isClosed()) {
@@ -540,15 +790,16 @@ public class App {
 
 					board = (int[][]) doin.readObject();
 
-					drawingArea.PaintBoard();
+					drawingArea.PaintBoard(false);
 					StartGame();
-					while (true){
+					while (true) {
 						gameState = (GameState) doin.readObject();
 					}
 
 				} catch (Exception e) {
 					gameState = null;
-					if (!e.getMessage().equals("Read timed out")) Disconnect();
+					if (!e.getMessage().equals("Read timed out"))
+						Disconnect();
 				}
 
 			}
