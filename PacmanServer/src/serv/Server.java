@@ -20,10 +20,9 @@ import myLib.*;
 
 public class Server {
 
-	private ServerSocket ss; // сам сервер-сокет
-	private Thread serverThread; // главная нить обработки сервер-сокета
-	private int port; // порт сервер сокета.
-	// очередь, где храняться все SocketProcessorы для рассылки
+	private ServerSocket ss;
+	private Thread serverThread;
+	private int port; 
 	BlockingQueue<User> allUsers = new LinkedBlockingQueue<User>();
 	BlockingQueue<Room> rooms = new LinkedBlockingQueue<Room>();
 
@@ -33,8 +32,8 @@ public class Server {
 
 	public Server(int port) throws IOException {
 
-		ss = new ServerSocket(port); // создаем сервер-сокет
-		this.port = port; // сохраняем порт.
+		ss = new ServerSocket(port);
+		this.port = port;
 
 		initialize();
 
@@ -45,62 +44,37 @@ public class Server {
 	}
 
 	void run() {
-		serverThread = Thread.currentThread(); // со старта сохраняем нить
-												// (чтобы можно ее было
-												// interrupt())
+		serverThread = Thread.currentThread();
 		while (true) {
-			Socket s = getNewConn(); // получить новое соединение или
-										// фейк-соедиение
-			if (serverThread.isInterrupted()) { // если это фейк-соединение, то
-												// наша нить была interrupted(),
-				// надо прерваться
+			Socket s = getNewConn();
+			if (serverThread.isInterrupted()) {
 				break;
-			} else if (s != null) { // "только если коннект успешно создан"...
+			} else if (s != null) {
 				try {
-					final User processor = new User(s); // создаем
-														// сокет-процессор
-					final Thread thread = new Thread(processor); // создаем
-																	// отдельную
-																	// асинхронную
-																	// нить
-																	// чтения
-																	// из сокета
-					thread.setDaemon(true); // ставим ее в демона (чтобы не
-											// ожидать ее закрытия)
-					thread.start(); // запускаем
-					allUsers.offer(processor); // добавляем в список активных
-					// сокет-процессоров
+					final User processor = new User(s); 
+					final Thread thread = new Thread(processor);
+					thread.setDaemon(true);
+					thread.start();
+					allUsers.offer(processor);
 					System.out.println(s.toString() + " connected");
-				} // тут прикол в замысле. Если попытка создать (new
-					// SocketProcessor()) безуспешна,
-					// то остальные строки обойдем, нить запускать не будем, в
-					// список не сохраним
+				} 
 				catch (IOException ignored) {
-				} // само же исключение создания коннекта нам не интересно.
+				} 
 			}
 		}
 	}
 
-	/**
-	 * Ожидает новое подключение.
-	 * 
-	 * @return Сокет нового подключения
-	 */
 	private Socket getNewConn() {
 		Socket s = null;
 		try {
 			s = ss.accept();
 		} catch (IOException e) {
-			shutdownServer(); // если ошибка в момент приема - "гасим" сервер
+			shutdownServer();
 		}
 		return s;
 	}
 
-	/**
-	 * метод "глушения" сервера
-	 */
 	private synchronized void shutdownServer() {
-		// обрабатываем список рабочих коннектов, закрываем каждый
 		for (User s : allUsers) {
 			s.close();
 		}
@@ -164,7 +138,7 @@ public class Server {
 		public void run() {
 
 			while (!s.isClosed()) {
-				// пока сокет не закрыт...
+				
 				String line = null;
 
 				DataInputStream in = new DataInputStream(sin);
@@ -175,26 +149,19 @@ public class Server {
 							.println("The dumb client just sent me this line : "
 									+ line);
 				} catch (IOException e) {
-					close(); // если не получилось - закрываем сокет.
+					close();
 				}
 
-				if (line == null) { // если клиент отключился в штатном
-									// режиме.
-					close(); // то закрываем сокет
-				} else if ("shutdown".equals(line)) { // если поступила команда
-														// "погасить сервер",
-														// то...
-					serverThread.interrupt(); // сначала возводим флаг у
-												// северной нити о необходимости
-												// прерваться.
+				if (line == null) {
+					close();
+				} else if ("shutdown".equals(line)) {
+					serverThread.interrupt(); 
 					try {
-						new Socket("localhost", port); // создаем фейк-коннект
-														// (чтобы выйти из
-														// .accept())
-					} catch (IOException ignored) { // ошибки неинтересны
+						new Socket("localhost", port); // create fake connection
+														// (to leave ".accept()")
+					} catch (IOException ignored) {
 					} finally {
-						shutdownServer(); // а затем глушим сервер вызовом его
-											// метода shutdownServer().
+						shutdownServer();
 					}
 				} else if ("RefreshRoomList".equals(line)) {
 					SendRoomList();
@@ -771,9 +738,9 @@ public class Server {
 
 			/**
 			 * @param direction
-			 *            "1" - rigth, "-1" - left, "2" - down, "-2" - up
+			 *            "1" - right, "-1" - left, "2" - down, "-2" - up
 			 * @param speed
-			 *            Time in ms needed to reach next cell
+			 *            Time in Ms needed to reach next cell
 			 */
 			public Character(Point cell, int direction, int speed, int id) {
 				this.cell = (Point) cell.clone();
@@ -857,7 +824,7 @@ public class Server {
 		private class Player extends Character {
 			/**
 			 * @param direction
-			 *            "1" - rigth, "-1" - left, "2" - down, "-2" - up
+			 *            "1" - right, "-1" - left, "2" - down, "-2" - up
 			 * @param speed
 			 *            Time in ms needed to reach next cell
 			 */
@@ -923,7 +890,7 @@ public class Server {
 
 			/**
 			 * @param direction
-			 *            "1" - rigth, "-1" - left, "2" - down, "-2" - up
+			 *            "1" - right, "-1" - left, "2" - down, "-2" - up
 			 * @param speed
 			 *            Time in ms needed to reach next cell
 			 */

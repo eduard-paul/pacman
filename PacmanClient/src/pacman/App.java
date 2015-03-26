@@ -30,10 +30,8 @@ import java.io.OutputStream;
 import java.net.InetAddress;
 import java.net.ServerSocket;
 import java.net.Socket;
-import java.net.SocketException;
 import java.util.Timer;
 import java.util.TimerTask;
-import java.util.Vector;
 
 public class App {
 
@@ -50,6 +48,70 @@ public class App {
 	SocketReader processor;
 	Thread thread;
 	Timer painter;
+	GameState sendingState;
+	private final int[][] defaultBoard = {
+			{ -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+					-1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1 },
+			{ -1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, -1, -1, 0, 0, 0, 0,
+					0, 0, 0, 0, 0, 0, 0, 0, -1 },
+			{ -1, 0, -1, -1, -1, -1, 0, -1, -1, -1, -1, -1, 0, -1, -1, 0,
+					-1, -1, -1, -1, -1, 0, -1, -1, -1, -1, 0, -1 },
+			{ -1, 0, -1, -1, -1, -1, 0, -1, -1, -1, -1, -1, 0, -1, -1, 0,
+					-1, -1, -1, -1, -1, 0, -1, -1, -1, -1, 0, -1 },
+			{ -1, 0, -1, -1, -1, -1, 0, -1, -1, -1, -1, -1, 0, -1, -1, 0,
+					-1, -1, -1, -1, -1, 0, -1, -1, -1, -1, 0, -1 },
+			{ -1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+					0, 0, 0, 0, 0, 0, 0, -1 },
+			{ -1, 0, -1, -1, -1, -1, 0, -1, -1, 0, -1, -1, -1, -1, -1, -1,
+					-1, -1, 0, -1, -1, 0, -1, -1, -1, -1, 0, -1 },
+			{ -1, 0, -1, -1, -1, -1, 0, -1, -1, 0, -1, -1, -1, -1, -1, -1,
+					-1, -1, 0, -1, -1, 0, -1, -1, -1, -1, 0, -1 },
+			{ -1, 0, 0, 0, 0, 0, 0, -1, -1, 0, 0, 0, 0, -1, -1, 0, 0, 0, 0,
+					-1, -1, 0, 0, 0, 0, 0, 0, -1 },
+			{ -1, -1, -1, -1, -1, -1, 0, -1, -1, -1, -1, -1, 0, -1, -1, 0,
+					-1, -1, -1, -1, -1, 0, -1, -1, -1, -1, -1, -1 },
+			{ -1, -1, -1, -1, -1, -1, 0, -1, -1, -1, -1, -1, 0, -1, -1, 0,
+					-1, -1, -1, -1, -1, 0, -1, -1, -1, -1, -1, -1 },
+			{ -1, -1, -1, -1, -1, -1, 0, -1, -1, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+					0, -1, -1, 0, -1, -1, -1, -1, -1, -1 },
+			{ -1, -1, -1, -1, -1, -1, 0, -1, -1, 0, -1, -1, -1, 0, 0, -1,
+					-1, -1, 0, -1, -1, 0, -1, -1, -1, -1, -1, -1 },
+			{ -1, -1, -1, -1, -1, -1, 0, -1, -1, 0, -1, 0, 0, 0, 0, 0, 0,
+					-1, 0, -1, -1, 0, -1, -1, -1, -1, -1, -1 },
+			{ 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, -1, 0, -1, -1, -1, -1, 0, -1,
+					0, 0, 0, 0, 0, 0, 0, 0, 0, 0 },
+			{ -1, -1, -1, -1, -1, -1, 0, -1, -1, 0, -1, 0, 0, 0, 0, 0, 0,
+					-1, 0, -1, -1, 0, -1, -1, -1, -1, -1, -1 },
+			{ -1, -1, -1, -1, -1, -1, 0, -1, -1, 0, -1, -1, -1, 0, 0, -1,
+					-1, -1, 0, -1, -1, 0, -1, -1, -1, -1, -1, -1 },
+			{ -1, -1, -1, -1, -1, -1, 0, -1, -1, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+					0, -1, -1, 0, -1, -1, -1, -1, -1, -1 },
+			{ -1, -1, -1, -1, -1, -1, 0, -1, -1, 0, -1, -1, -1, -1, -1, -1,
+					-1, -1, 0, -1, -1, 0, -1, -1, -1, -1, -1, -1 },
+			{ -1, -1, -1, -1, -1, -1, 0, -1, -1, 0, -1, -1, -1, -1, -1, -1,
+					-1, -1, 0, -1, -1, 0, -1, -1, -1, -1, -1, -1 },
+			{ -1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, -1, -1, 0, 0, 0, 0,
+					0, 0, 0, 0, 0, 0, 0, 0, -1 },
+			{ -1, 0, -1, -1, -1, -1, 0, -1, -1, -1, -1, -1, 0, -1, -1, 0,
+					-1, -1, -1, -1, -1, 0, -1, -1, -1, -1, 0, -1 },
+			{ -1, 0, -1, -1, -1, -1, 0, -1, -1, -1, -1, -1, 0, -1, -1, 0,
+					-1, -1, -1, -1, -1, 0, -1, -1, -1, -1, 0, -1 },
+			{ -1, 0, 0, 0, -1, -1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+					0, 0, 0, -1, -1, 0, 0, 0, -1 },
+			{ -1, -1, -1, 0, -1, -1, 0, -1, -1, 0, -1, -1, -1, -1, -1, -1,
+					-1, -1, 0, -1, -1, 0, -1, -1, 0, -1, -1, -1 },
+			{ -1, -1, -1, 0, -1, -1, 0, -1, -1, 0, -1, -1, -1, -1, -1, -1,
+					-1, -1, 0, -1, -1, 0, -1, -1, 0, -1, -1, -1 },
+			{ -1, 0, 0, 0, 0, 0, 0, -1, -1, 0, 0, 0, 0, -1, -1, 0, 0, 0, 0,
+					-1, -1, 0, 0, 0, 0, 0, 0, -1 },
+			{ -1, 0, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, 0, -1, -1, 0,
+					-1, -1, -1, -1, -1, -1, -1, -1, -1, -1, 0, -1 },
+			{ -1, 0, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, 0, -1, -1, 0,
+					-1, -1, -1, -1, -1, -1, -1, -1, -1, -1, 0, -1 },
+			{ -1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+					0, 0, 0, 0, 0, 0, 0, -1 },
+			{ -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+					-1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1 } };
 
 	private JFrame gameWindow;
 	private JFrame mainWindow;
@@ -58,12 +120,13 @@ public class App {
 	@SuppressWarnings("rawtypes")
 	protected JList list;
 	private JButton btnNewRoom;
+	private JButton btnCustomRoom;
 	private JButton btnEnter;
 	private JButton btnSpectate;
 	private JButton btnLeaveRoom;
 	private JButton btnRefresh;
 	private DrawingArea drawingArea;
-	public int[][] board;
+	private int[][] board;
 
 	class DrawingArea extends JPanel {
 
@@ -123,6 +186,7 @@ public class App {
 		}
 
 		public void PaintBoard() {
+			if (board == null) board = defaultBoard.clone();
 			image = new BufferedImage(board[0].length * cellSize, board.length
 					* cellSize, BufferedImage.TYPE_INT_ARGB);
 			imgBoard = new BufferedImage(board[0].length * cellSize,
@@ -227,65 +291,6 @@ public class App {
 		});
 	}
 
-	private void Send(String str) {
-		try {
-			out.writeUTF(str);
-		} catch (IOException e) {
-		}
-	}
-
-	private String recv() {
-		String result = "";
-		try {
-			result = in.readUTF();
-		} catch (IOException e) {
-		}
-		return result;
-	}
-
-	@SuppressWarnings({ "rawtypes", "unchecked" })
-	private void RefreshRoomList() {
-		try {
-			out.writeUTF("RefreshRoomList");
-			String line = recv();
-			DefaultListModel model = new DefaultListModel();
-			if (!line.equals("empty")) {
-				roomList = line.split(":");
-				for (String string : roomList) {
-					if (string.substring(0, string.length() - 6).equals(myRoom))
-						string = ">>" + string + "<<";
-					model.addElement(string);
-				}
-				list.setModel(model);
-			} else {
-				roomList = null;
-				list.setModel(model);
-
-			}
-		} catch (IOException e) {
-		}
-	}
-
-	private void LeaveRoom() {
-		myRoom = "";
-		Send("LeaveRoom");
-		if (painter != null) painter.cancel();
-		RefreshRoomList();
-		btnEnter.setEnabled(true);
-		btnSpectate.setEnabled(true);
-		btnNewRoom.setEnabled(true);
-		btnLeaveRoom.setEnabled(false);
-	}
-
-	private void GetRoom(String name) {
-		myRoom = name;
-		RefreshRoomList();
-		btnEnter.setEnabled(false);
-		btnSpectate.setEnabled(false);
-		btnNewRoom.setEnabled(false);
-		btnLeaveRoom.setEnabled(true);
-	}
-
 	@SuppressWarnings({ "unchecked", "rawtypes", "serial" })
 	private void MainWindowInit() {
 		mainWindow = new JFrame("Games list");
@@ -361,6 +366,50 @@ public class App {
 		});
 		panel_1.add(btnNewRoom);
 
+		btnCustomRoom = new JButton("Custom room");
+		btnCustomRoom.setEnabled(false);
+		btnCustomRoom.addActionListener(new ActionListener() {
+			public void actionPerformed(ActionEvent arg0) {
+				boolean failed;
+				String roomName;
+				do {
+					failed = false;
+					roomName = JOptionPane
+							.showInputDialog(
+									"Print name of new room",
+									"New room");
+					if (roomName != null)
+						try {
+							if (roomList != null)
+								for (String str : roomList) {
+									String strName = str.substring(0,
+											str.length() - 6);
+									if (roomName.equals(strName)) {
+										failed = true;
+									}
+								}
+						} catch (Exception e) {
+							failed = true;
+						}
+				} while (failed);
+				if (roomName != null) {
+					
+					CreatorWindowInit();
+					
+					/*
+					Send("CreateRoom:" + roomName);
+					String answer = recv();
+					RefreshRoomList();
+					if (answer.equals("success")) {
+						GetRoom(roomName.substring(2));
+					}
+					*/
+				}
+			}
+		});
+		panel_1.add(btnCustomRoom);
+
+		
 		btnEnter = new JButton("Enter");
 		btnEnter.setEnabled(false);
 		btnEnter.addActionListener(new ActionListener() {
@@ -461,6 +510,7 @@ public class App {
 							btnEnter.setEnabled(true);
 							btnSpectate.setEnabled(true);
 							btnNewRoom.setEnabled(true);
+							btnCustomRoom.setEnabled(true);
 							btnRefresh.setEnabled(true);
 
 						} catch (Exception e) {
@@ -503,6 +553,101 @@ public class App {
 		mnFile.add(mntmDisconnect);
 		mnFile.add(mntmExit);
 	}
+	
+	private void CreatorWindowInit() {
+		JFrame creator = new JFrame();
+		creator.setVisible(true);
+//		mainWindow.setVisible(false);
+		creator.setResizable(false);
+		creator.setBounds(100, 100, DrawingArea.cellSize * 28 + 6,
+				DrawingArea.cellSize * 31 + 50);
+		creator.setDefaultCloseOperation(JFrame.DO_NOTHING_ON_CLOSE);
+		creator.getContentPane().setLayout(new BorderLayout(0, 0));
+
+		drawingArea = new DrawingArea();
+		creator.getContentPane().add(drawingArea, BorderLayout.CENTER);
+		drawingArea.PaintBoard();
+		
+		sendingState = new GameState(cs, board);
+		
+		JPanel panel = new JPanel();
+		mainWindow.getContentPane().add(panel, BorderLayout.SOUTH);
+		FlowLayout fl_panel_1 = new FlowLayout(FlowLayout.LEFT, 5, 5);
+		fl_panel_1.setAlignOnBaseline(true);
+		panel.setLayout(fl_panel_1);
+
+		JButton btnDone = new JButton("Done");
+		btnDone.setEnabled(false);
+		btnDone.addActionListener(new ActionListener() {
+			public void actionPerformed(ActionEvent arg0) {
+				boolean failed;
+				
+			}
+		});
+		panel.add(btnDone);
+
+	}
+	
+	private void Send(String str) {
+		try {
+			out.writeUTF(str);
+		} catch (IOException e) {
+		}
+	}
+
+	private String recv() {
+		String result = "";
+		try {
+			result = in.readUTF();
+		} catch (IOException e) {
+		}
+		return result;
+	}
+
+	@SuppressWarnings({ "rawtypes", "unchecked" })
+	private void RefreshRoomList() {
+		try {
+			out.writeUTF("RefreshRoomList");
+			String line = recv();
+			DefaultListModel model = new DefaultListModel();
+			if (!line.equals("empty")) {
+				roomList = line.split(":");
+				for (String string : roomList) {
+					if (string.substring(0, string.length() - 6).equals(myRoom))
+						string = ">>" + string + "<<";
+					model.addElement(string);
+				}
+				list.setModel(model);
+			} else {
+				roomList = null;
+				list.setModel(model);
+
+			}
+		} catch (IOException e) {
+		}
+	}
+
+	private void LeaveRoom() {
+		myRoom = "";
+		Send("LeaveRoom");
+		if (painter != null) painter.cancel();
+		RefreshRoomList();
+		btnEnter.setEnabled(true);
+		btnSpectate.setEnabled(true);
+		btnNewRoom.setEnabled(true);
+		btnCustomRoom.setEnabled(true);
+		btnLeaveRoom.setEnabled(false);
+	}
+
+	private void GetRoom(String name) {
+		myRoom = name;
+		RefreshRoomList();
+		btnEnter.setEnabled(false);
+		btnSpectate.setEnabled(false);
+		btnNewRoom.setEnabled(false);
+		btnCustomRoom.setEnabled(false);
+		btnLeaveRoom.setEnabled(true);
+	}
 
 	private void Disconnect() {
 		try {
@@ -519,6 +664,7 @@ public class App {
 			btnSpectate.setEnabled(false);
 			btnLeaveRoom.setEnabled(false);
 			btnNewRoom.setEnabled(false);
+			btnCustomRoom.setEnabled(false);
 			btnRefresh.setEnabled(false);
 		} catch (IOException e) {
 		}
@@ -526,7 +672,6 @@ public class App {
 	
 	private class SocketReader implements Runnable {
 
-		@SuppressWarnings("unchecked")
 		public void run() {
 
 			while (!dataSocket.isClosed()) {
