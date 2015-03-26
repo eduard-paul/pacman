@@ -94,6 +94,7 @@ public class Server {
 		private InputStream sin;
 		private OutputStream sout;
 		ObjectOutputStream dObjOut;
+		ObjectInputStream oin;
 		DataOutputStream dOut;
 		DataInputStream din;
 		String myRoomName = "";
@@ -108,6 +109,7 @@ public class Server {
 			dObjOut = new ObjectOutputStream(ds.getOutputStream());
 			dOut = new DataOutputStream(ds.getOutputStream());
 			din = new DataInputStream(ds.getInputStream());
+			oin = new ObjectInputStream(s.getInputStream());
 			Thread secondReader = new Thread(new Runnable() {
 				@Override
 				public void run() {
@@ -199,18 +201,17 @@ public class Server {
 			playerId = -1;
 		}
 
-		public synchronized void CustomRoom(String name) {
+		public synchronized void CustomRoom(String line) {
 			DataOutputStream out = new DataOutputStream(sout);
 			boolean failed = false;
+			String name = line.substring(11);
 			for (Room room : rooms) { // Check if the same already exists
 				if (room.name.equals(name))
 					failed = true;
 			}
 			if (!failed) {
-				try {
-					ObjectInputStream doin = new ObjectInputStream(
-							ds.getInputStream());
-					CustomBoard cb = (CustomBoard) doin.readObject();
+				try {					
+					CustomBoard cb = (CustomBoard) oin.readObject();
 					myRoom = new Room(name, cb, this);
 					rooms.offer(myRoom);
 					myRoomName = name;

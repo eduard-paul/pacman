@@ -48,7 +48,7 @@ public class App {
 	DataInputStream in;
 	DataOutputStream out, dout;
 	ObjectInputStream doin;
-	ObjectOutputStream doout;
+	ObjectOutputStream oout;
 	DataInputStream din;
 	String[] roomList;
 	String myRoom = "";
@@ -123,6 +123,7 @@ public class App {
 
 	private JFrame gameWindow;
 	private JFrame mainWindow;
+	private JFrame creator;
 	protected JMenuItem mntmDisconnect;
 	protected JMenuItem mntmConnectTo;
 	@SuppressWarnings("rawtypes")
@@ -199,8 +200,14 @@ public class App {
 		 *            If true then draw players/ghosts positions
 		 */
 		public void PaintBoard(boolean createMode) {
-			if (board == null)
-				board = defaultBoard.clone();
+			if (board == null){
+				board = new int[defaultBoard.length][defaultBoard[0].length];
+				for (int i = 0; i < board.length; i++) {
+					for (int j = 0; j < board[0].length; j++) {
+						board[i][j] = defaultBoard[i][j];
+					}
+				}
+			}
 			image = new BufferedImage(board[0].length * cellSize, board.length
 					* cellSize, BufferedImage.TYPE_INT_ARGB);
 			imgBoard = new BufferedImage(board[0].length * cellSize,
@@ -218,11 +225,15 @@ public class App {
 							g2dBoard.setColor(Color.darkGray);
 							break;
 						}
+						g2dBoard.setColor(Color.white);
+						break;
 					case 1:
 						if (createMode) {
 							g2dBoard.setColor(Color.red);
 							break;
 						}
+						g2dBoard.setColor(Color.white);
+						break;
 					case 5:
 						g2dBoard.setColor(Color.cyan);
 						break;
@@ -520,6 +531,8 @@ public class App {
 									.getInputStream());
 							dout = new DataOutputStream(dataSocket
 									.getOutputStream());
+							oout = new ObjectOutputStream(socket
+									.getOutputStream());
 
 							processor = new SocketReader();
 							thread = new Thread(processor);
@@ -584,13 +597,12 @@ public class App {
 		final BlockingQueue<Point> ghosts = new LinkedBlockingQueue<Point>();
 		customBoard = new CustomBoard();
 
-		JFrame creator = new JFrame();
+		creator = new JFrame();
 		creator.setVisible(true);
 		// mainWindow.setVisible(false);
 		creator.setResizable(false);
 		creator.setBounds(100, 100, DrawingArea.cellSize * 28 + 6,
 				DrawingArea.cellSize * 31 + 60);
-		creator.setDefaultCloseOperation(JFrame.DO_NOTHING_ON_CLOSE);
 		creator.getContentPane().setLayout(new BorderLayout(0, 0));
 
 		JPanel panel = new JPanel();
@@ -610,20 +622,23 @@ public class App {
 
 				Send("CustomRoom:" + name);
 				try {
-					doout = new ObjectOutputStream(dataSocket.getOutputStream());
-					doout.writeObject(customBoard);
+					oout.writeObject(customBoard);
 				} catch (IOException e) {
 				}
 				String answer = recv();
+				System.out.println(answer);
 				RefreshRoomList();
 				if (answer.equals("success")) {
-					GetRoom(name.substring(2));
+					GetRoom(name);
+					creator.dispose();
+					creator = null;
 				}
 			}
 		});
 		panel.add(btnDone);
 
-		drawingArea = new DrawingArea();
+		board = null;
+		final DrawingArea drawingArea = new DrawingArea();
 		creator.getContentPane().add(drawingArea, BorderLayout.CENTER);
 		drawingArea.PaintBoard(true);
 		drawingArea.addMouseListener(new MouseAdapter() {
