@@ -226,9 +226,6 @@ public class App {
 					case 5:
 						g2dBoard.setColor(Color.cyan);
 						break;
-					case 0:
-						g2dBoard.setColor(Color.white);
-						break;
 					default:
 						g2dBoard.setColor(Color.white);
 						break;
