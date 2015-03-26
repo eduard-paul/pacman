@@ -13,5 +13,5 @@ hs_err_pid*
 .metadata/
 RemoteSystemsTempFiles/
 bin/
-.recommenders
+.recommenders/
 
