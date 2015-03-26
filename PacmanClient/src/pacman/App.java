@@ -13,12 +13,15 @@ import java.awt.image.BufferedImage;
 import javax.swing.*;
 
 import myLib.CharacterState;
+import myLib.CustomBoard;
 import myLib.GameState;
 
 import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
 import java.awt.event.KeyAdapter;
 import java.awt.event.KeyEvent;
+import java.awt.event.MouseAdapter;
+import java.awt.event.MouseEvent;
 import java.awt.event.WindowAdapter;
 import java.awt.event.WindowEvent;
 import java.io.DataInputStream;
@@ -26,12 +29,16 @@ import java.io.DataOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.ObjectInputStream;
+import java.io.ObjectOutputStream;
 import java.io.OutputStream;
 import java.net.InetAddress;
 import java.net.ServerSocket;
 import java.net.Socket;
 import java.util.Timer;
 import java.util.TimerTask;
+import java.util.Vector;
+import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.LinkedBlockingQueue;
 
 public class App {
 
@@ -41,6 +48,7 @@ public class App {
 	DataInputStream in;
 	DataOutputStream out, dout;
 	ObjectInputStream doin;
+	ObjectOutputStream doout;
 	DataInputStream din;
 	String[] roomList;
 	String myRoom = "";
@@ -48,70 +56,70 @@ public class App {
 	SocketReader processor;
 	Thread thread;
 	Timer painter;
-	GameState sendingState;
+	CustomBoard customBoard;
 	private final int[][] defaultBoard = {
-			{ -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
-					-1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1 },
-			{ -1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, -1, -1, 0, 0, 0, 0,
-					0, 0, 0, 0, 0, 0, 0, 0, -1 },
-			{ -1, 0, -1, -1, -1, -1, 0, -1, -1, -1, -1, -1, 0, -1, -1, 0,
-					-1, -1, -1, -1, -1, 0, -1, -1, -1, -1, 0, -1 },
-			{ -1, 0, -1, -1, -1, -1, 0, -1, -1, -1, -1, -1, 0, -1, -1, 0,
-					-1, -1, -1, -1, -1, 0, -1, -1, -1, -1, 0, -1 },
-			{ -1, 0, -1, -1, -1, -1, 0, -1, -1, -1, -1, -1, 0, -1, -1, 0,
-					-1, -1, -1, -1, -1, 0, -1, -1, -1, -1, 0, -1 },
-			{ -1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-					0, 0, 0, 0, 0, 0, 0, -1 },
-			{ -1, 0, -1, -1, -1, -1, 0, -1, -1, 0, -1, -1, -1, -1, -1, -1,
-					-1, -1, 0, -1, -1, 0, -1, -1, -1, -1, 0, -1 },
-			{ -1, 0, -1, -1, -1, -1, 0, -1, -1, 0, -1, -1, -1, -1, -1, -1,
-					-1, -1, 0, -1, -1, 0, -1, -1, -1, -1, 0, -1 },
-			{ -1, 0, 0, 0, 0, 0, 0, -1, -1, 0, 0, 0, 0, -1, -1, 0, 0, 0, 0,
-					-1, -1, 0, 0, 0, 0, 0, 0, -1 },
-			{ -1, -1, -1, -1, -1, -1, 0, -1, -1, -1, -1, -1, 0, -1, -1, 0,
-					-1, -1, -1, -1, -1, 0, -1, -1, -1, -1, -1, -1 },
-			{ -1, -1, -1, -1, -1, -1, 0, -1, -1, -1, -1, -1, 0, -1, -1, 0,
-					-1, -1, -1, -1, -1, 0, -1, -1, -1, -1, -1, -1 },
-			{ -1, -1, -1, -1, -1, -1, 0, -1, -1, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-					0, -1, -1, 0, -1, -1, -1, -1, -1, -1 },
-			{ -1, -1, -1, -1, -1, -1, 0, -1, -1, 0, -1, -1, -1, 0, 0, -1,
-					-1, -1, 0, -1, -1, 0, -1, -1, -1, -1, -1, -1 },
-			{ -1, -1, -1, -1, -1, -1, 0, -1, -1, 0, -1, 0, 0, 0, 0, 0, 0,
+			{ -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+					-1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1 },
+			{ -1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, -1, -1, 0, 0, 0, 0, 0, 0,
+					0, 0, 0, 0, 0, 0, -1 },
+			{ -1, 0, -1, -1, -1, -1, 0, -1, -1, -1, -1, -1, 0, -1, -1, 0, -1,
+					-1, -1, -1, -1, 0, -1, -1, -1, -1, 0, -1 },
+			{ -1, 0, -1, -1, -1, -1, 0, -1, -1, -1, -1, -1, 0, -1, -1, 0, -1,
+					-1, -1, -1, -1, 0, -1, -1, -1, -1, 0, -1 },
+			{ -1, 0, -1, -1, -1, -1, 0, -1, -1, -1, -1, -1, 0, -1, -1, 0, -1,
+					-1, -1, -1, -1, 0, -1, -1, -1, -1, 0, -1 },
+			{ -1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+					0, 0, 0, 0, 0, 0, -1 },
+			{ -1, 0, -1, -1, -1, -1, 0, -1, -1, 0, -1, -1, -1, -1, -1, -1, -1,
+					-1, 0, -1, -1, 0, -1, -1, -1, -1, 0, -1 },
+			{ -1, 0, -1, -1, -1, -1, 0, -1, -1, 0, -1, -1, -1, -1, -1, -1, -1,
+					-1, 0, -1, -1, 0, -1, -1, -1, -1, 0, -1 },
+			{ -1, 0, 0, 0, 0, 0, 0, -1, -1, 0, 0, 0, 0, -1, -1, 0, 0, 0, 0, -1,
+					-1, 0, 0, 0, 0, 0, 0, -1 },
+			{ -1, -1, -1, -1, -1, -1, 0, -1, -1, -1, -1, -1, 0, -1, -1, 0, -1,
+					-1, -1, -1, -1, 0, -1, -1, -1, -1, -1, -1 },
+			{ -1, -1, -1, -1, -1, -1, 0, -1, -1, -1, -1, -1, 0, -1, -1, 0, -1,
+					-1, -1, -1, -1, 0, -1, -1, -1, -1, -1, -1 },
+			{ -1, -1, -1, -1, -1, -1, 0, -1, -1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+					-1, -1, 0, -1, -1, -1, -1, -1, -1 },
+			{ -1, -1, -1, -1, -1, -1, 0, -1, -1, 0, -1, -1, -1, 0, 0, -1, -1,
 					-1, 0, -1, -1, 0, -1, -1, -1, -1, -1, -1 },
-			{ 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, -1, 0, -1, -1, -1, -1, 0, -1,
-					0, 0, 0, 0, 0, 0, 0, 0, 0, 0 },
-			{ -1, -1, -1, -1, -1, -1, 0, -1, -1, 0, -1, 0, 0, 0, 0, 0, 0,
-					-1, 0, -1, -1, 0, -1, -1, -1, -1, -1, -1 },
-			{ -1, -1, -1, -1, -1, -1, 0, -1, -1, 0, -1, -1, -1, 0, 0, -1,
-					-1, -1, 0, -1, -1, 0, -1, -1, -1, -1, -1, -1 },
-			{ -1, -1, -1, -1, -1, -1, 0, -1, -1, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+			{ -1, -1, -1, -1, -1, -1, 0, -1, -1, 0, -1, 0, 0, 0, 0, 0, 0, -1,
 					0, -1, -1, 0, -1, -1, -1, -1, -1, -1 },
-			{ -1, -1, -1, -1, -1, -1, 0, -1, -1, 0, -1, -1, -1, -1, -1, -1,
-					-1, -1, 0, -1, -1, 0, -1, -1, -1, -1, -1, -1 },
-			{ -1, -1, -1, -1, -1, -1, 0, -1, -1, 0, -1, -1, -1, -1, -1, -1,
-					-1, -1, 0, -1, -1, 0, -1, -1, -1, -1, -1, -1 },
-			{ -1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, -1, -1, 0, 0, 0, 0,
-					0, 0, 0, 0, 0, 0, 0, 0, -1 },
-			{ -1, 0, -1, -1, -1, -1, 0, -1, -1, -1, -1, -1, 0, -1, -1, 0,
-					-1, -1, -1, -1, -1, 0, -1, -1, -1, -1, 0, -1 },
-			{ -1, 0, -1, -1, -1, -1, 0, -1, -1, -1, -1, -1, 0, -1, -1, 0,
-					-1, -1, -1, -1, -1, 0, -1, -1, -1, -1, 0, -1 },
-			{ -1, 0, 0, 0, -1, -1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-					0, 0, 0, -1, -1, 0, 0, 0, -1 },
-			{ -1, -1, -1, 0, -1, -1, 0, -1, -1, 0, -1, -1, -1, -1, -1, -1,
-					-1, -1, 0, -1, -1, 0, -1, -1, 0, -1, -1, -1 },
-			{ -1, -1, -1, 0, -1, -1, 0, -1, -1, 0, -1, -1, -1, -1, -1, -1,
-					-1, -1, 0, -1, -1, 0, -1, -1, 0, -1, -1, -1 },
-			{ -1, 0, 0, 0, 0, 0, 0, -1, -1, 0, 0, 0, 0, -1, -1, 0, 0, 0, 0,
-					-1, -1, 0, 0, 0, 0, 0, 0, -1 },
-			{ -1, 0, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, 0, -1, -1, 0,
-					-1, -1, -1, -1, -1, -1, -1, -1, -1, -1, 0, -1 },
-			{ -1, 0, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, 0, -1, -1, 0,
-					-1, -1, -1, -1, -1, -1, -1, -1, -1, -1, 0, -1 },
-			{ -1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-					0, 0, 0, 0, 0, 0, 0, -1 },
-			{ -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
-					-1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1 } };
+			{ 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, -1, 0, -1, -1, -1, -1, 0, -1, 0, 0,
+					0, 0, 0, 0, 0, 0, 0, 0 },
+			{ -1, -1, -1, -1, -1, -1, 0, -1, -1, 0, -1, 0, 0, 0, 0, 0, 0, -1,
+					0, -1, -1, 0, -1, -1, -1, -1, -1, -1 },
+			{ -1, -1, -1, -1, -1, -1, 0, -1, -1, 0, -1, -1, -1, 0, 0, -1, -1,
+					-1, 0, -1, -1, 0, -1, -1, -1, -1, -1, -1 },
+			{ -1, -1, -1, -1, -1, -1, 0, -1, -1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+					-1, -1, 0, -1, -1, -1, -1, -1, -1 },
+			{ -1, -1, -1, -1, -1, -1, 0, -1, -1, 0, -1, -1, -1, -1, -1, -1, -1,
+					-1, 0, -1, -1, 0, -1, -1, -1, -1, -1, -1 },
+			{ -1, -1, -1, -1, -1, -1, 0, -1, -1, 0, -1, -1, -1, -1, -1, -1, -1,
+					-1, 0, -1, -1, 0, -1, -1, -1, -1, -1, -1 },
+			{ -1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, -1, -1, 0, 0, 0, 0, 0, 0,
+					0, 0, 0, 0, 0, 0, -1 },
+			{ -1, 0, -1, -1, -1, -1, 0, -1, -1, -1, -1, -1, 0, -1, -1, 0, -1,
+					-1, -1, -1, -1, 0, -1, -1, -1, -1, 0, -1 },
+			{ -1, 0, -1, -1, -1, -1, 0, -1, -1, -1, -1, -1, 0, -1, -1, 0, -1,
+					-1, -1, -1, -1, 0, -1, -1, -1, -1, 0, -1 },
+			{ -1, 0, 0, 0, -1, -1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+					0, -1, -1, 0, 0, 0, -1 },
+			{ -1, -1, -1, 0, -1, -1, 0, -1, -1, 0, -1, -1, -1, -1, -1, -1, -1,
+					-1, 0, -1, -1, 0, -1, -1, 0, -1, -1, -1 },
+			{ -1, -1, -1, 0, -1, -1, 0, -1, -1, 0, -1, -1, -1, -1, -1, -1, -1,
+					-1, 0, -1, -1, 0, -1, -1, 0, -1, -1, -1 },
+			{ -1, 0, 0, 0, 0, 0, 0, -1, -1, 0, 0, 0, 0, -1, -1, 0, 0, 0, 0, -1,
+					-1, 0, 0, 0, 0, 0, 0, -1 },
+			{ -1, 0, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, 0, -1, -1, 0, -1,
+					-1, -1, -1, -1, -1, -1, -1, -1, -1, 0, -1 },
+			{ -1, 0, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, 0, -1, -1, 0, -1,
+					-1, -1, -1, -1, -1, -1, -1, -1, -1, 0, -1 },
+			{ -1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+					0, 0, 0, 0, 0, 0, -1 },
+			{ -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+					-1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1 } };
 
 	private JFrame gameWindow;
 	private JFrame mainWindow;
@@ -150,10 +158,10 @@ public class App {
 		}
 
 		public void PaintState() {
-			
-			if (gameState != null){
+
+			if (gameState != null) {
 				board = gameState.board;
-				PaintBoard();
+				PaintBoard(false);
 				imgBoard.copyData(image.getRaster());
 				for (CharacterState ch : gameState.cs) {
 					g2dImage.setColor(Color.DARK_GRAY);
@@ -185,8 +193,14 @@ public class App {
 			repaint();
 		}
 
-		public void PaintBoard() {
-			if (board == null) board = defaultBoard.clone();
+		/**
+		 * 
+		 * @param createMode
+		 *            If true then draw players/ghosts positions
+		 */
+		public void PaintBoard(boolean createMode) {
+			if (board == null)
+				board = defaultBoard.clone();
 			image = new BufferedImage(board[0].length * cellSize, board.length
 					* cellSize, BufferedImage.TYPE_INT_ARGB);
 			imgBoard = new BufferedImage(board[0].length * cellSize,
@@ -195,14 +209,31 @@ public class App {
 			g2dImage = (Graphics2D) image.getGraphics();
 			for (int row = 0; row < board.length; row++) {
 				for (int col = 0; col < board[0].length; col++) {
-					if (board[row][col] == -1) {
+					switch (board[row][col]) {
+					case -1:
 						g2dBoard.setColor(Color.lightGray);
-					} else if (board[row][col] == 5) {
+						break;
+					case -2:
+						if (createMode) {
+							g2dBoard.setColor(Color.darkGray);
+							break;
+						}
+					case 1:
+						if (createMode) {
+							g2dBoard.setColor(Color.red);
+							break;
+						}
+					case 5:
 						g2dBoard.setColor(Color.cyan);
-					}
-					else {
+						break;
+					case 0:
 						g2dBoard.setColor(Color.white);
+						break;
+					default:
+						g2dBoard.setColor(Color.white);
+						break;
 					}
+
 					g2dBoard.fillRect(col * cellSize, row * cellSize, cellSize,
 							cellSize);
 				}
@@ -374,10 +405,8 @@ public class App {
 				String roomName;
 				do {
 					failed = false;
-					roomName = JOptionPane
-							.showInputDialog(
-									"Print name of new room",
-									"New room");
+					roomName = JOptionPane.showInputDialog(
+							"Print name of new room", "New room");
 					if (roomName != null)
 						try {
 							if (roomList != null)
@@ -393,23 +422,21 @@ public class App {
 						}
 				} while (failed);
 				if (roomName != null) {
-					
-					CreatorWindowInit();
-					
-					/*
-					Send("CreateRoom:" + roomName);
-					String answer = recv();
-					RefreshRoomList();
-					if (answer.equals("success")) {
-						GetRoom(roomName.substring(2));
-					}
-					*/
+
+					CreatorWindowInit(roomName);
+
+					// Send("CreateRoom:" + roomName);
+					// String answer = recv();
+					// RefreshRoomList();
+					// if (answer.equals("success")) {
+					// GetRoom(roomName.substring(2));
+					// }
+
 				}
 			}
 		});
 		panel_1.add(btnCustomRoom);
 
-		
 		btnEnter = new JButton("Enter");
 		btnEnter.setEnabled(false);
 		btnEnter.addActionListener(new ActionListener() {
@@ -553,41 +580,105 @@ public class App {
 		mnFile.add(mntmDisconnect);
 		mnFile.add(mntmExit);
 	}
-	
-	private void CreatorWindowInit() {
+
+	private void CreatorWindowInit(final String name) {
+
+		final BlockingQueue<Point> players = new LinkedBlockingQueue<Point>();
+		final BlockingQueue<Point> ghosts = new LinkedBlockingQueue<Point>();
+		customBoard = new CustomBoard();
+
 		JFrame creator = new JFrame();
 		creator.setVisible(true);
-//		mainWindow.setVisible(false);
+		// mainWindow.setVisible(false);
 		creator.setResizable(false);
 		creator.setBounds(100, 100, DrawingArea.cellSize * 28 + 6,
-				DrawingArea.cellSize * 31 + 50);
+				DrawingArea.cellSize * 31 + 60);
 		creator.setDefaultCloseOperation(JFrame.DO_NOTHING_ON_CLOSE);
 		creator.getContentPane().setLayout(new BorderLayout(0, 0));
 
-		drawingArea = new DrawingArea();
-		creator.getContentPane().add(drawingArea, BorderLayout.CENTER);
-		drawingArea.PaintBoard();
-		
-		sendingState = new GameState(cs, board);
-		
 		JPanel panel = new JPanel();
-		mainWindow.getContentPane().add(panel, BorderLayout.SOUTH);
+		creator.getContentPane().add(panel, BorderLayout.SOUTH);
 		FlowLayout fl_panel_1 = new FlowLayout(FlowLayout.LEFT, 5, 5);
 		fl_panel_1.setAlignOnBaseline(true);
 		panel.setLayout(fl_panel_1);
 
-		JButton btnDone = new JButton("Done");
+		final JButton btnDone = new JButton("Done");
 		btnDone.setEnabled(false);
 		btnDone.addActionListener(new ActionListener() {
 			public void actionPerformed(ActionEvent arg0) {
-				boolean failed;
-				
+				// TODO Send custom board
+				customBoard.board = board;
+				customBoard.playersStartPoints = players;
+				customBoard.ghostsStartPoints = ghosts;
+
+				Send("CustomRoom:" + name);
+				try {
+					doout = new ObjectOutputStream(dataSocket.getOutputStream());
+					doout.writeObject(customBoard);
+				} catch (IOException e) {
+				}
+				String answer = recv();
+				RefreshRoomList();
+				if (answer.equals("success")) {
+					GetRoom(name.substring(2));
+				}
 			}
 		});
 		panel.add(btnDone);
 
+		drawingArea = new DrawingArea();
+		creator.getContentPane().add(drawingArea, BorderLayout.CENTER);
+		drawingArea.PaintBoard(true);
+		drawingArea.addMouseListener(new MouseAdapter() {
+			@Override
+			public void mousePressed(MouseEvent e) {
+				int x = e.getX();
+				int y = e.getY();
+				int cellRow = y / DrawingArea.cellSize;
+				int cellCol = x / DrawingArea.cellSize;
+				if (MouseEvent.BUTTON1 == e.getButton()) {
+					if (board[cellRow][cellCol] == 0
+							|| board[cellRow][cellCol] == -1)
+						board[cellRow][cellCol] = -(board[cellRow][cellCol] + 1) % 2;
+					drawingArea.PaintBoard(true);
+				} else if (MouseEvent.BUTTON3 == e.getButton()) {
+					if (players.size() < 4 && board[cellRow][cellCol] == 0) {
+						players.offer(new Point(cellRow, cellCol));
+						board[cellRow][cellCol] = 1;
+					} else if (board[cellRow][cellCol] == 1) {
+						for (Point player : players) {
+							if (player.getX() == cellRow
+									&& player.getY() == cellCol) {
+								players.remove(player);
+								board[cellRow][cellCol] = 0;
+							}
+						}
+					}
+					drawingArea.PaintBoard(true);
+				} else if (MouseEvent.BUTTON2 == e.getButton()) {
+					if (ghosts.size() < 4 && board[cellRow][cellCol] == 0) {
+						ghosts.offer(new Point(cellRow, cellCol));
+						board[cellRow][cellCol] = -2;
+					} else if (board[cellRow][cellCol] == -2) {
+						for (Point ghost : ghosts) {
+							if (ghost.getX() == cellRow
+									&& ghost.getY() == cellCol) {
+								ghosts.remove(ghost);
+								board[cellRow][cellCol] = 0;
+							}
+						}
+					}
+					drawingArea.PaintBoard(true);
+				}
+				if (ghosts.size() == 4 && players.size() > 0) {
+					btnDone.setEnabled(true);
+				} else {
+					btnDone.setEnabled(false);
+				}
+			}
+		});
 	}
-	
+
 	private void Send(String str) {
 		try {
 			out.writeUTF(str);
@@ -629,8 +720,10 @@ public class App {
 
 	private void LeaveRoom() {
 		myRoom = "";
+		board = null;
 		Send("LeaveRoom");
-		if (painter != null) painter.cancel();
+		if (painter != null)
+			painter.cancel();
 		RefreshRoomList();
 		btnEnter.setEnabled(true);
 		btnSpectate.setEnabled(true);
@@ -669,7 +762,7 @@ public class App {
 		} catch (IOException e) {
 		}
 	}
-	
+
 	private class SocketReader implements Runnable {
 
 		public void run() {
@@ -685,15 +778,16 @@ public class App {
 
 					board = (int[][]) doin.readObject();
 
-					drawingArea.PaintBoard();
+					drawingArea.PaintBoard(false);
 					StartGame();
-					while (true){
+					while (true) {
 						gameState = (GameState) doin.readObject();
 					}
 
 				} catch (Exception e) {
 					gameState = null;
-					if (!e.getMessage().equals("Read timed out")) Disconnect();
+					if (!e.getMessage().equals("Read timed out"))
+						Disconnect();
 				}
 
 			}

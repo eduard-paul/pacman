@@ -5,6 +5,7 @@ import java.io.DataInputStream;
 import java.io.DataOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.ObjectInputStream;
 import java.io.ObjectOutputStream;
 import java.io.OutputStream;
 import java.net.ServerSocket;
@@ -22,7 +23,7 @@ public class Server {
 
 	private ServerSocket ss;
 	private Thread serverThread;
-	private int port; 
+	private int port;
 	BlockingQueue<User> allUsers = new LinkedBlockingQueue<User>();
 	BlockingQueue<Room> rooms = new LinkedBlockingQueue<Room>();
 
@@ -51,15 +52,14 @@ public class Server {
 				break;
 			} else if (s != null) {
 				try {
-					final User processor = new User(s); 
+					final User processor = new User(s);
 					final Thread thread = new Thread(processor);
 					thread.setDaemon(true);
 					thread.start();
 					allUsers.offer(processor);
 					System.out.println(s.toString() + " connected");
-				} 
-				catch (IOException ignored) {
-				} 
+				} catch (IOException ignored) {
+				}
 			}
 		}
 	}
@@ -138,7 +138,7 @@ public class Server {
 		public void run() {
 
 			while (!s.isClosed()) {
-				
+
 				String line = null;
 
 				DataInputStream in = new DataInputStream(sin);
@@ -155,10 +155,11 @@ public class Server {
 				if (line == null) {
 					close();
 				} else if ("shutdown".equals(line)) {
-					serverThread.interrupt(); 
+					serverThread.interrupt();
 					try {
 						new Socket("localhost", port); // create fake connection
-														// (to leave ".accept()")
+														// (to leave
+														// ".accept()")
 					} catch (IOException ignored) {
 					} finally {
 						shutdownServer();
@@ -167,6 +168,8 @@ public class Server {
 					SendRoomList();
 				} else if (line.contains("CreateRoom:")) {
 					CreateRoom(line);
+				} else if (line.contains("CustomRoom:")) {
+					CustomRoom(line);
 				} else if (line.contains("EnterRoom:")) {
 					EnterRoom(line);
 				} else if (line.contains("LeaveRoom")) {
@@ -194,6 +197,39 @@ public class Server {
 			myRoomName = "";
 			myRoom = null;
 			playerId = -1;
+		}
+
+		public synchronized void CustomRoom(String name) {
+			DataOutputStream out = new DataOutputStream(sout);
+			boolean failed = false;
+			for (Room room : rooms) { // Check if the same already exists
+				if (room.name.equals(name))
+					failed = true;
+			}
+			if (!failed) {
+				try {
+					ObjectInputStream doin = new ObjectInputStream(
+							ds.getInputStream());
+					CustomBoard cb = (CustomBoard) doin.readObject();
+					myRoom = new Room(name, cb, this);
+					rooms.offer(myRoom);
+					myRoomName = name;
+					out.writeUTF("success");
+					out.flush();
+				} catch (Exception e) {
+					try {
+						out.writeUTF("fail");
+						out.flush();
+					} catch (IOException e1) {
+					}
+				}
+			} else {
+				try {
+					out.writeUTF("fail");
+					out.flush();
+				} catch (IOException e) {
+				}
+			}
 		}
 
 		public synchronized void CreateRoom(String line) {
@@ -394,6 +430,19 @@ public class Server {
 				StartGame();
 		}
 
+		public Room(String name, CustomBoard cb, User firstPlayer) {
+
+			this.name = name;
+			this.maxPlayers = cb.playersStartPoints.size();
+			this.currPlayers = 1;
+			players.offer(firstPlayer);
+
+			game = new Game(cb);
+
+			if (currPlayers == maxPlayers)
+				StartGame();
+		}
+
 		public void AddPlayer(User firstPlayer) {
 			if (currPlayers < maxPlayers && !isStarted) {
 				players.offer(firstPlayer);
@@ -540,6 +589,8 @@ public class Server {
 				new Point(1, 26), new Point(29, 26), new Point(29, 1) };
 		private final Point[] defaultGhostsStartPoints = { new Point(13, 11),
 				new Point(15, 11), new Point(13, 16), new Point(15, 16) };
+		private final Point[] playersStartPoints;
+		private final Point[] ghostsStartPoints; 
 		private final int DefaultSpeed = 300;
 		private final int TimerPeriod = 30;
 
@@ -600,19 +651,44 @@ public class Server {
 		}
 
 		public Game(int playersNum) {
-
+			
+			this.playersStartPoints = defaultPlayersStartPoints;
+			this.ghostsStartPoints = defaultGhostsStartPoints;
 			this.playersNum = playersNum;
-			board = new DefaultBoard();
+			board = new Board();
 			for (int[] row : board.board) {
 				for (int i : row) {
-					if (i == 0){
+					if (i == 0) {
 						totalFood++;
 					}
 				}
 			}
 			for (int i = 0; i < board.board.length; i++) {
 				for (int j = 0; j < board.board[0].length; j++) {
-					if (board.board[i][j] == 0){
+					if (board.board[i][j] == 0) {
+						totalFood++;
+						board.board[i][j] = 5;
+					}
+				}
+			}
+		}
+
+		public Game(CustomBoard cb) {
+			// TODO Auto-generated constructor stub
+			this.playersNum = cb.playersStartPoints.size();
+			this.playersStartPoints = cb.playersStartPoints.toArray(new Point[0]);
+			this.ghostsStartPoints = cb.ghostsStartPoints.toArray(new Point[0]);
+			board = new Board(cb);
+			for (int[] row : board.board) {
+				for (int i : row) {
+					if (i != -1) {
+						totalFood++;
+					}
+				}
+			}
+			for (int i = 0; i < board.board.length; i++) {
+				for (int j = 0; j < board.board[0].length; j++) {
+					if (board.board[i][j] != -1) {
 						totalFood++;
 						board.board[i][j] = 5;
 					}
@@ -626,19 +702,19 @@ public class Server {
 				int direction = 1;
 				if (i % 2 == 1)
 					direction = -1;
-				characters.add(new Player(defaultPlayersStartPoints[i],
+				characters.add(new Player(playersStartPoints[i],
 						direction, DefaultSpeed, i + 1));
-				board.setCellState(defaultPlayersStartPoints[i], 1);
+				board.setCellState(playersStartPoints[i], 1);
 			}
 
 			for (int i = 0; i < ghostsNum; i++) {
 				int direction = 1;
 				if (i % 2 == 1)
 					direction = -1;
-				characters.add(new Ghost(defaultGhostsStartPoints[i],
+				characters.add(new Ghost(ghostsStartPoints[i],
 						direction, DefaultSpeed, -1 - i, characters.get(i
 								% playersNum)));
-				board.setCellState(defaultGhostsStartPoints[i], -2);
+				board.setCellState(ghostsStartPoints[i], -2);
 			}
 			timer.schedule(task, 0, TimerPeriod);
 		}
@@ -650,7 +726,7 @@ public class Server {
 				if (i % 2 == 1)
 					direction = -1;
 				Character player = characters.get(i);
-				player.Setter(defaultPlayersStartPoints[i], direction,
+				player.Setter(playersStartPoints[i], direction,
 						DefaultSpeed);
 			}
 			for (int i = playersNum; i < playersNum + ghostsNum; i++) {
@@ -658,7 +734,7 @@ public class Server {
 				if (i % 2 == 1)
 					direction = -1;
 				Character ghost = characters.get(i);
-				ghost.Setter(defaultGhostsStartPoints[i - playersNum],
+				ghost.Setter(ghostsStartPoints[i - playersNum],
 						direction, DefaultSpeed);
 			}
 			catchedPlayers = 0;
@@ -670,11 +746,36 @@ public class Server {
 			protected int board[][];
 			protected int cleanBoard[][];
 
+			public Board(CustomBoard cb) {
+				board = new int[cb.board.length][cb.board[0].length];
+				cleanBoard = new int[cb.board.length][cb.board[0].length];
+				for (int i = 0; i < board.length; i++) {
+					for (int j = 0; j < board[0].length; j++) {
+						board[i][j] = cb.board[i][j];
+						cleanBoard[i][j] = cb.board[i][j];
+					}
+				}
+			}
+			/**
+			 * Creates the default board
+			 */
+			public Board() {
+				board = new int[defaultBoard.length][defaultBoard[0].length];
+				cleanBoard = new int[defaultBoard.length][defaultBoard[0].length];
+				for (int i = 0; i < board.length; i++) {
+					for (int j = 0; j < board[0].length; j++) {
+						board[i][j] = defaultBoard[i][j];
+						cleanBoard[i][j] = defaultBoard[i][j];
+					}
+				}
+			}
+			
 			public void Clean() {
 				for (int i = 0; i < board.length; i++) {
 					for (int j = 0; j < board[0].length; j++) {
 						board[i][j] = cleanBoard[i][j];
-						if (board[i][j] == 0) board[i][j] = 5;
+						if (board[i][j] == 0)
+							board[i][j] = 5;
 					}
 				}
 			}
@@ -692,19 +793,6 @@ public class Server {
 			 */
 			public int getCellState(Point cell) {
 				return board[cell.x][cell.y];
-			}
-		}
-
-		private class DefaultBoard extends Board {
-			public DefaultBoard() {
-				board = new int[defaultBoard.length][defaultBoard[0].length];
-				cleanBoard = new int[defaultBoard.length][defaultBoard[0].length];
-				for (int i = 0; i < board.length; i++) {
-					for (int j = 0; j < board[0].length; j++) {
-						board[i][j] = defaultBoard[i][j];
-						cleanBoard[i][j] = defaultBoard[i][j];
-					}
-				}
 			}
 		}
 
@@ -838,7 +926,7 @@ public class Server {
 				super.Setter(cell, direction, speed);
 				this.myFood = 0;
 			}
-			
+
 			@Override
 			public void move() {
 				if (Math.abs(desiredDirection) == Math.abs(direction))

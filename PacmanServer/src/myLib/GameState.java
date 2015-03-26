@@ -7,7 +7,6 @@ public class GameState implements Serializable {
 	private static final long serialVersionUID = -1056933580285366915L;
 	public Vector<CharacterState> cs;
 	public int[][] board;
-	public int  playersNum = 0;
 	
 	public GameState(Vector<CharacterState> cs, int[][] board) {
 		this.cs = cs;
