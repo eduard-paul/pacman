@@ -433,12 +433,12 @@ public class App {
 
 					CreatorWindowInit(roomName);
 
-					// Send("CreateRoom:" + roomName);
-					// String answer = recv();
-					// RefreshRoomList();
-					// if (answer.equals("success")) {
-					// GetRoom(roomName.substring(2));
-					// }
+					 Send("CreateRoom:" + roomName);
+					 String answer = recv();
+					 RefreshRoomList();
+					 if (answer.equals("success")) {
+					 GetRoom(roomName.substring(2));
+					 }
 
 				}
 			}
@@ -547,7 +547,7 @@ public class App {
 							btnEnter.setEnabled(true);
 							btnSpectate.setEnabled(true);
 							btnNewRoom.setEnabled(true);
-							btnCustomRoom.setEnabled(true);
+//							btnCustomRoom.setEnabled(true);
 							btnRefresh.setEnabled(true);
 
 						} catch (Exception e) {
@@ -754,6 +754,7 @@ public class App {
 		btnLeaveRoom.setEnabled(true);
 	}
 
+	@SuppressWarnings("unchecked")
 	private void Disconnect() {
 		try {
 			if (!socket.isClosed())
@@ -761,18 +762,25 @@ public class App {
 			if (!dataSocket.isClosed())
 				dataSocket.close();
 			if (!ss.isClosed())
-				ss.close();
-			mntmDisconnect.setEnabled(false);
-			mntmConnectTo.setEnabled(true);
-			myRoom = "";
-			btnEnter.setEnabled(false);
-			btnSpectate.setEnabled(false);
-			btnLeaveRoom.setEnabled(false);
-			btnNewRoom.setEnabled(false);
-			btnCustomRoom.setEnabled(false);
-			btnRefresh.setEnabled(false);
+				ss.close();			
 		} catch (IOException e) {
 		}
+		mainWindow.setVisible(true);
+		gameWindow.setVisible(false);
+		mntmDisconnect.setEnabled(false);
+		mntmConnectTo.setEnabled(true);
+		myRoom = "";
+		btnEnter.setEnabled(false);
+		btnSpectate.setEnabled(false);
+		btnLeaveRoom.setEnabled(false);
+		btnNewRoom.setEnabled(false);
+		btnCustomRoom.setEnabled(false);
+		btnRefresh.setEnabled(false);
+		
+		@SuppressWarnings("rawtypes")
+		DefaultListModel model = new DefaultListModel();
+		roomList = null;
+		list.setModel(model);
 	}
 
 	private class SocketReader implements Runnable {
@@ -798,7 +806,7 @@ public class App {
 
 				} catch (Exception e) {
 					gameState = null;
-					if (!e.getMessage().equals("Read timed out"))
+					if (e.getMessage() == null || !e.getMessage().equals("Read timed out"))
 						Disconnect();
 				}
 

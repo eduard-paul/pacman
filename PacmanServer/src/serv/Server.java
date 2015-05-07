@@ -1,6 +1,12 @@
 package serv;
 
+import java.awt.BorderLayout;
+import java.awt.Component;
+import java.awt.EventQueue;
+import java.awt.FlowLayout;
 import java.awt.Point;
+import java.awt.event.ActionEvent;
+import java.awt.event.ActionListener;
 import java.io.DataInputStream;
 import java.io.DataOutputStream;
 import java.io.IOException;
@@ -17,34 +23,125 @@ import java.util.Vector;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.LinkedBlockingQueue;
 
+import javax.swing.JButton;
+import javax.swing.JFrame;
+import javax.swing.JPanel;
+import javax.swing.JScrollPane;
+import javax.swing.JTextArea;
+import javax.swing.ScrollPaneConstants;
+
 import myLib.*;
 
 public class Server {
 
+	static Server server;
+	
 	private ServerSocket ss;
 	private Thread serverThread;
 	private int port;
 	BlockingQueue<User> allUsers = new LinkedBlockingQueue<User>();
 	BlockingQueue<Room> rooms = new LinkedBlockingQueue<Room>();
+	private JFrame mainWindow;
+	JScrollPane scroll;
+
+	private static JButton btnStop;
+
+	private static JButton btnStart;
+
+	private JTextArea textArea;
 
 	public static void main(String[] args) throws IOException {
-		new Server(6666).run();
+		EventQueue.invokeLater(new Runnable() {
+			public void run() {
+				try {
+					server = new Server(6666);
+					initialize();
+					server.mainWindow.setVisible(true);
+				} catch (Exception e) {
+					e.printStackTrace();
+				}
+			}
+		});	
+		
 	}
 
-	public Server(int port) throws IOException {
+	public Server(int port) {
 
+		this.port = port;		
+
+	}
+
+	private static void initialize() {
+		server.mainWindow = new JFrame("Games list");
+		server.mainWindow.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
+		server.mainWindow.setBounds(100, 100, 560, 352);
+
+		JPanel panel = new JPanel();
+		server.mainWindow.getContentPane().add(panel, BorderLayout.CENTER);
+		panel.setLayout(new BorderLayout(0, 0));
+		
+		server.textArea = new JTextArea();
+		server.textArea.setEditable(false);
+		
+		server.scroll = new JScrollPane(server.textArea);
+		server.scroll.setVerticalScrollBarPolicy(ScrollPaneConstants.VERTICAL_SCROLLBAR_ALWAYS);
+		
+		panel.add(server.scroll, BorderLayout.CENTER);
+		
+		JPanel panelSouth = new JPanel();
+		server.mainWindow.getContentPane().add(panelSouth, BorderLayout.SOUTH);
+		FlowLayout fl_panelSouth = new FlowLayout(FlowLayout.LEFT, 5, 5);
+		fl_panelSouth.setAlignOnBaseline(true);
+		panelSouth.setLayout(fl_panelSouth);
+		
+		btnStart = new JButton("Start");
+		btnStart.setEnabled(true);
+		btnStart.addActionListener(new ActionListener() {
+			public void actionPerformed(ActionEvent arg0) {
+				
+				btnStop.setEnabled(true);
+				btnStart.setEnabled(false);
+				
+				new Thread(new Runnable() {					
+					@Override
+					public void run() {
+						try {
+							server.run();
+						} catch (IOException e) {
+							btnStop.setEnabled(false);
+							btnStart.setEnabled(true);
+						}
+					}
+				}).start();	
+			}
+		});
+		btnStart.setAlignmentY(Component.TOP_ALIGNMENT);
+		panelSouth.add(btnStart);
+		
+		btnStop = new JButton("Stop");
+		btnStop.setEnabled(false);
+		btnStop.addActionListener(new ActionListener() {
+			public void actionPerformed(ActionEvent arg0) {
+				server.serverThread.interrupt();
+				try {
+					new Socket("localhost", server.port); // create fake connection
+													// (to leave
+													// ".accept()")
+				} catch (IOException ignored) {
+				} finally {
+					server.shutdownServer();
+				}
+				btnStop.setEnabled(false);
+				btnStart.setEnabled(true);
+			}
+		});
+		btnStop.setAlignmentY(Component.TOP_ALIGNMENT);
+		panelSouth.add(btnStop);
+
+	}
+
+	void run() throws IOException {
 		ss = new ServerSocket(port);
-		this.port = port;
-
-		initialize();
-
-	}
-
-	private void initialize() {
-
-	}
-
-	void run() {
 		serverThread = Thread.currentThread();
 		while (true) {
 			Socket s = getNewConn();
@@ -57,6 +154,7 @@ public class Server {
 					thread.setDaemon(true);
 					thread.start();
 					allUsers.offer(processor);
+					server.textArea.append(s.toString() + " connected\n");
 					System.out.println(s.toString() + " connected");
 				} catch (IOException ignored) {
 				}
@@ -77,10 +175,12 @@ public class Server {
 	private synchronized void shutdownServer() {
 		for (User s : allUsers) {
 			s.close();
+			//server.textArea.append("1\n");
 		}
 		if (!ss.isClosed()) {
 			try {
 				ss.close();
+				//server.textArea.append("2\n");
 			} catch (IOException ignored) {
 			}
 		}
@@ -156,16 +256,6 @@ public class Server {
 
 				if (line == null) {
 					close();
-				} else if ("shutdown".equals(line)) {
-					serverThread.interrupt();
-					try {
-						new Socket("localhost", port); // create fake connection
-														// (to leave
-														// ".accept()")
-					} catch (IOException ignored) {
-					} finally {
-						shutdownServer();
-					}
 				} else if ("RefreshRoomList".equals(line)) {
 					SendRoomList();
 				} else if (line.contains("CreateRoom:")) {
@@ -347,6 +437,7 @@ public class Server {
 			if (!s.isClosed()) { // Try to close request socket
 				try {
 					s.close();
+					server.textArea.append(s.toString() + " disconnected\n");
 					System.out.println(s.toString() + " disconnected");
 				} catch (IOException ignored) {
 				}
