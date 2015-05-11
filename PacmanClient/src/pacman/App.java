@@ -432,14 +432,6 @@ public class App {
 				if (roomName != null) {
 
 					CreatorWindowInit(roomName);
-
-					 Send("CreateRoom:" + roomName);
-					 String answer = recv();
-					 RefreshRoomList();
-					 if (answer.equals("success")) {
-					 GetRoom(roomName.substring(2));
-					 }
-
 				}
 			}
 		});
@@ -547,7 +539,7 @@ public class App {
 							btnEnter.setEnabled(true);
 							btnSpectate.setEnabled(true);
 							btnNewRoom.setEnabled(true);
-//							btnCustomRoom.setEnabled(true);
+							btnCustomRoom.setEnabled(true);
 							btnRefresh.setEnabled(true);
 
 						} catch (Exception e) {
